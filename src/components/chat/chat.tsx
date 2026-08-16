@@ -107,9 +107,7 @@ export function Chat() {
             Where should we go?
           </h1>
           <p className="text-sm text-muted-foreground sm:text-base">
-            {isConnected
-              ? "Ask Monad to check balance, send MON or launch a token"
-              : "Connect your wallet to get started."}
+            Ask Nomad to check balance, send MON or launch a token
           </p>
         </div>
         
@@ -117,20 +115,18 @@ export function Chat() {
           <MessageInput value={inputText} onChange={setInputText} onSend={handleSend} disabled={isLoading || !isConnected} className="w-full" />
         </div>
 
-        {isConnected && (
-          <div className="flex flex-wrap items-center justify-center gap-2 mt-4">
-            {SUGGESTIONS.map((s) => (
-              <button
-                key={s}
-                type="button"
-                onClick={() => setInputText(s)}
-                className="rounded-full border border-border bg-background px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:border-brand/50 hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-              >
-                {s}
-              </button>
-            ))}
-          </div>
-        )}
+        <div className="flex flex-wrap items-center justify-center gap-2 mt-4">
+          {SUGGESTIONS.map((s) => (
+            <button
+              key={s}
+              type="button"
+              onClick={() => setInputText(s)}
+              className="rounded-full border border-border bg-background px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:border-brand/50 hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            >
+              {s}
+            </button>
+          ))}
+        </div>
       </div>
     );
   }

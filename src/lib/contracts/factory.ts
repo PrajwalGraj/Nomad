@@ -30,5 +30,9 @@ export const nomadTokenFactoryAbi = [
   },
 ] as const;
 
-// Set once contracts/script/DeployFactory.s.sol has been broadcast to Monad testnet.
-export const FACTORY_ADDRESS = process.env.NOMAD_FACTORY_ADDRESS as `0x${string}` | undefined;
+// Nomad's own deployed factory on Monad testnet — public info (a contract address,
+// not a secret), safe to bake in as a default so deployments work without extra
+// config. NOMAD_FACTORY_ADDRESS still overrides it if you deploy your own instance.
+const DEFAULT_FACTORY_ADDRESS = "0x526F54924b8675f6D15e114C48F830a6a418e408";
+
+export const FACTORY_ADDRESS = (process.env.NOMAD_FACTORY_ADDRESS || DEFAULT_FACTORY_ADDRESS) as `0x${string}`;
