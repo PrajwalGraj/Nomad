@@ -1,12 +1,15 @@
 import { cn } from "@/lib/utils";
 
 export function MessageBubble({ role, text }: { role: "user" | "assistant"; text: string }) {
+  const isUser = role === "user";
   return (
-    <div className={cn("flex", role === "user" ? "justify-end" : "justify-start")}>
+    <div className={cn("flex", isUser ? "justify-end" : "justify-start")}>
       <div
         className={cn(
-          "max-w-lg whitespace-pre-wrap rounded-2xl px-4 py-2 text-sm",
-          role === "user" ? "bg-primary text-primary-foreground" : "bg-muted"
+          "max-w-lg whitespace-pre-wrap px-4 py-2.5 text-sm leading-relaxed",
+          isUser
+            ? "rounded-2xl rounded-br-md bg-primary text-primary-foreground shadow-[0_8px_24px_-10px_var(--brand)]"
+            : "rounded-2xl rounded-bl-md border border-border bg-card text-card-foreground shadow-sm"
         )}
       >
         {text}

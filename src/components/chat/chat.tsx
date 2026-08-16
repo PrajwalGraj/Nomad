@@ -8,11 +8,23 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { MessageBubble } from "./message-bubble";
 import { MessageInput } from "./message-input";
 import { CardRenderer } from "./card-renderer";
+import { ThinkingIndicator } from "./thinking-indicator";
 import type { DisplayItem } from "./types";
 import type { ToolCard } from "@/lib/tools/types";
 
 let idCounter = 0;
 const nextId = () => `item-${++idCounter}`;
+
+const SUGGESTIONS = ["What's in my wallet?", "Send 0.1 MON to vitalik.eth", "Launch a token called Nomad"];
+
+function BackgroundGlow() {
+  return (
+    <div aria-hidden className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
+      <div className="animate-blob absolute -top-32 -right-24 size-96 rounded-full bg-brand/20 blur-3xl" />
+      <div className="animate-blob-delayed absolute -bottom-40 -left-24 size-96 rounded-full bg-primary/15 blur-3xl" />
+    </div>
+  );
+}
 
 export function Chat() {
   const { address, isConnected } = useAccount();
@@ -59,34 +71,62 @@ export function Chat() {
 
   if (items.length === 0) {
     return (
-      <div className="flex flex-1 flex-col items-center justify-center gap-6 p-4">
-        <div className="flex max-w-md flex-col items-center gap-2 text-center">
-          <h1 className="text-2xl font-semibold tracking-tight">Where should we go?</h1>
-          <p className="text-sm text-muted-foreground">
+      <div className="relative flex flex-1 flex-col items-center justify-start gap-7 overflow-hidden p-4 pt-[14vh] sm:pt-[18vh]">
+        <BackgroundGlow />
+        <div className="flex max-w-lg flex-col items-center gap-3 text-center">
+          <h1 className="text-gradient-brand font-heading text-5xl font-bold tracking-tight sm:text-6xl">
+            Where should we go?
+          </h1>
+          <p className="text-balance text-sm text-muted-foreground sm:text-base">
             {isConnected
               ? "Ask Nomad to check a balance, send MON, or launch a token."
               : "Connect your wallet to get started."}
           </p>
         </div>
         <MessageInput onSend={handleSend} disabled={isLoading || !isConnected} className="w-full max-w-xl" />
+        {isConnected && (
+          <div className="flex flex-wrap items-center justify-center gap-2">
+            {SUGGESTIONS.map((s) => (
+              <button
+                key={s}
+                type="button"
+                onClick={() => handleSend(s)}
+                className="rounded-full border border-border bg-background px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:border-brand/50 hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              >
+                {s}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
     );
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+    <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
+      <BackgroundGlow />
       <ScrollArea className="min-h-0 flex-1">
         <div className="mx-auto flex max-w-2xl flex-col gap-4 p-4">
           {items.map((item) => {
-            if (item.type === "message") return <MessageBubble key={item.id} role={item.role} text={item.text} />;
-            if (item.type === "card") return <CardRenderer key={item.id} card={item.card} />;
+            if (item.type === "message")
+              return (
+                <div key={item.id} className="animate-fade-in-up">
+                  <MessageBubble role={item.role} text={item.text} />
+                </div>
+              );
+            if (item.type === "card")
+              return (
+                <div key={item.id} className="animate-fade-in-up">
+                  <CardRenderer card={item.card} />
+                </div>
+              );
             return (
-              <Alert key={item.id} variant="destructive">
+              <Alert key={item.id} variant="destructive" className="animate-fade-in-up">
                 <AlertDescription>{item.text}</AlertDescription>
               </Alert>
             );
           })}
-          {isLoading && <p className="text-sm text-muted-foreground">Nomad is thinking…</p>}
+          {isLoading && <ThinkingIndicator />}
           <div ref={bottomRef} />
         </div>
       </ScrollArea>

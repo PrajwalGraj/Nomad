@@ -18,6 +18,10 @@ export type PrepareSwapCard = {
   kind: "prepare_swap";
   configured: boolean;
   reason?: string;
+  // "approve" when tokenIn is an ERC-20 with insufficient allowance for Kuru's
+  // router — the returned tx is an approve() call, not the swap itself. Call
+  // prepare_swap again after it confirms to get the actual swap tx.
+  step?: "approve" | "swap";
   tokenIn: { symbol: string; address: `0x${string}` | "native" };
   tokenOut: { symbol: string; address: `0x${string}` | "native" };
   amountInFormatted: string;

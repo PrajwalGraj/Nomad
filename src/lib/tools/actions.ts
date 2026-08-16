@@ -2,7 +2,7 @@ import { encodeFunctionData, formatUnits, getAddress, isAddress, parseEther, par
 import { publicClient } from "@/lib/viem";
 import { erc20Abi } from "@/lib/contracts/erc20";
 import { FACTORY_ADDRESS, nomadTokenFactoryAbi } from "@/lib/contracts/factory";
-import { DEX_ROUTER_ADDRESS, WRAPPED_NATIVE_ADDRESS, routerAbi } from "@/lib/contracts/router";
+import { getKuruQuote, NATIVE_MON_SENTINEL } from "@/lib/kuru";
 import { KNOWN_TOKENS } from "@/lib/tokens";
 import type { PrepareLaunchCard, PrepareSendCard, PrepareSwapCard } from "./types";
 
@@ -96,66 +96,77 @@ export async function prepareSwap(
     slippageBps,
   };
 
-  if (!DEX_ROUTER_ADDRESS) {
-    return {
-      ...baseCard,
-      reason:
-        "No DEX router is configured yet (DEX_ROUTER_ADDRESS unset). The build brief flagged that Monad testnet DEX liquidity needs to be verified before wiring this up — set the env var once a router is confirmed.",
-    };
-  }
-  if ((tokenInInfo.address === "native" || tokenOutInfo.address === "native") && !WRAPPED_NATIVE_ADDRESS) {
-    return {
-      ...baseCard,
-      reason: "Native MON swaps need WRAPPED_NATIVE_ADDRESS (WMON) configured to route through the DEX.",
-    };
-  }
-
-  const pathIn = tokenInInfo.address === "native" ? WRAPPED_NATIVE_ADDRESS! : tokenInInfo.address;
-  const pathOut = tokenOutInfo.address === "native" ? WRAPPED_NATIVE_ADDRESS! : tokenOutInfo.address;
-
   const decimalsIn = tokenInInfo.address === "native" ? 18 : await readDecimals(tokenInInfo.address);
-  const decimalsOut = tokenOutInfo.address === "native" ? 18 : await readDecimals(tokenOutInfo.address);
   const amountInUnits = parseUnits(input.amountIn, decimalsIn);
 
-  const amounts = await publicClient.readContract({
-    address: DEX_ROUTER_ADDRESS,
-    abi: routerAbi,
-    functionName: "getAmountsOut",
-    args: [amountInUnits, [pathIn, pathOut]],
-  });
-  const expectedOut = amounts[amounts.length - 1];
-  const minOut = (expectedOut * BigInt(10000 - slippageBps)) / 10000n;
-  const deadline = BigInt(Math.floor(Date.now() / 1000) + 20 * 60);
+  const kuruTokenIn = tokenInInfo.address === "native" ? NATIVE_MON_SENTINEL : tokenInInfo.address;
+  const kuruTokenOut = tokenOutInfo.address === "native" ? NATIVE_MON_SENTINEL : tokenOutInfo.address;
 
-  let data: `0x${string}`;
-  let value = "0x0";
-  if (tokenInInfo.address === "native") {
-    data = encodeFunctionData({
-      abi: routerAbi,
-      functionName: "swapExactETHForTokens",
-      args: [minOut, [pathIn, pathOut], ctx.walletAddress, deadline],
+  let quote;
+  try {
+    quote = await getKuruQuote({
+      userAddress: ctx.walletAddress,
+      tokenIn: kuruTokenIn,
+      tokenOut: kuruTokenOut,
+      amountUnits: amountInUnits.toString(),
+      slippageBps,
     });
-    value = toHex(amountInUnits);
-  } else if (tokenOutInfo.address === "native") {
-    data = encodeFunctionData({
-      abi: routerAbi,
-      functionName: "swapExactTokensForETH",
-      args: [amountInUnits, minOut, [pathIn, pathOut], ctx.walletAddress, deadline],
-    });
-  } else {
-    data = encodeFunctionData({
-      abi: routerAbi,
-      functionName: "swapExactTokensForTokens",
-      args: [amountInUnits, minOut, [pathIn, pathOut], ctx.walletAddress, deadline],
-    });
+  } catch (err) {
+    return {
+      ...baseCard,
+      reason: `Kuru Flow request failed: ${err instanceof Error ? err.message : "unknown error"}.`,
+    };
   }
+
+  if (quote.status !== "success" || !quote.transaction) {
+    return {
+      ...baseCard,
+      reason: quote.message ?? "Kuru Flow couldn't find a route for this pair — try a different amount or pair.",
+    };
+  }
+
+  // ERC-20 sell-side needs an on-chain allowance for Kuru's router before the
+  // swap itself can be signed. Surface the approve() call as its own step —
+  // ask the agent to call prepare_swap again once it confirms.
+  if (tokenInInfo.address !== "native") {
+    const spender = getAddress(quote.transaction.to);
+    const allowance = await publicClient.readContract({
+      address: tokenInInfo.address,
+      abi: erc20Abi,
+      functionName: "allowance",
+      args: [ctx.walletAddress, spender],
+    });
+    if (allowance < amountInUnits) {
+      const data = encodeFunctionData({
+        abi: erc20Abi,
+        functionName: "approve",
+        args: [spender, amountInUnits],
+      });
+      return {
+        ...baseCard,
+        configured: true,
+        step: "approve",
+        tx: { to: tokenInInfo.address, value: "0x0", data },
+      };
+    }
+  }
+
+  const decimalsOut = tokenOutInfo.address === "native" ? 18 : await readDecimals(tokenOutInfo.address);
+  const calldata = quote.transaction.calldata.startsWith("0x")
+    ? (quote.transaction.calldata as `0x${string}`)
+    : (`0x${quote.transaction.calldata}` as `0x${string}`);
 
   return {
     ...baseCard,
     configured: true,
-    expectedAmountOutFormatted: formatUnits(expectedOut, decimalsOut),
-    minAmountOutFormatted: formatUnits(minOut, decimalsOut),
-    tx: { to: DEX_ROUTER_ADDRESS, value, data },
+    step: "swap",
+    expectedAmountOutFormatted: formatUnits(BigInt(quote.output), decimalsOut),
+    minAmountOutFormatted: formatUnits(BigInt(quote.minOut), decimalsOut),
+    tx: {
+      to: getAddress(quote.transaction.to),
+      value: toHex(BigInt(quote.transaction.value || "0")),
+      data: calldata,
+    },
   };
 }
 

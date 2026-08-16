@@ -22,7 +22,7 @@ const actionTools: Tool[] = [
   {
     name: "prepare_swap",
     description:
-      "Prepare a token swap on the configured Monad testnet DEX router. Fetches a quote first, then returns unsigned swap calldata with a slippage-adjusted minimum output. Never broadcasts anything.",
+      "Prepare a token swap via Kuru Flow, Monad's swap aggregator. Fetches a quote first, then returns unsigned swap calldata with a slippage-adjusted minimum output — or, if the sell-side token needs an on-chain approval first, an approve() call to sign instead (call this tool again afterward to get the actual swap). Never broadcasts anything.",
     input_schema: {
       type: "object",
       properties: {

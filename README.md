@@ -50,34 +50,61 @@ gets created by the factory's `launchToken` call).
 
 Either way, set `NOMAD_FACTORY_ADDRESS` in `.env.local` to the deployed address.
 
+## Swaps
+
+`prepare_swap` routes through [Kuru Flow](https://docs.monad.xyz/guides/kuru-flow)
+(`src/lib/kuru.ts`), Monad's own documented swap aggregator — no on-chain quote
+call or router ABI to maintain, it returns ready-to-sign calldata from a REST API.
+No env var is required to turn it on; `KURU_FLOW_API_BASE` only needs setting if
+Kuru ever moves off `https://ws.kuru.io`.
+
+We independently verified before wiring this in (per the testnet-reset caveat
+below — don't trust docs alone):
+
+- All 6 documented Kuru testnet contracts (Router, Margin Account, Forwarder,
+  Deployer, Utils, and the MON-USDC market) return real bytecode via `cast code
+  <address> --rpc-url https://testnet-rpc.monad.xyz` — unlike the three DEXes in
+  the table below.
+- `https://ws.kuru.io/api/generate-token` and `/api/quote` are live and respond
+  with the documented shape (confirmed with a same-token probe that correctly
+  errors `tokenIn and tokenOut cannot be the same`).
+
+Not yet verified end-to-end: a full quote against a real testnet ERC-20 pair
+(every "documented" testnet USDC/WBTC/WETH address we found via search — including
+ones cited by Circle- and Nabla-adjacent sources — turned out to have empty
+bytecode on `testnet-rpc.monad.xyz`, same pattern as the table below). Native
+MON swaps should work as implemented; before trusting an ERC-20 pair, resolve a
+real token address yourself (deploy one via the factory, or verify a candidate
+with `cast code` first) and test one quote before shipping.
+
+If the sell-side token needs an allowance, `prepare_swap` returns an `approve()`
+call instead of the swap (`step: "approve"` on the card) — call it again after
+that confirms to get the actual swap.
+
+### Testnet reset caveat
+
+Monad testnet appears to have reset around Nov 12, 2026. While verifying DEX
+candidates for `prepare_swap`, we checked documented Monad testnet contract
+addresses from three independent protocols directly against
+`https://testnet-rpc.monad.xyz` (chainId `10143`) via `eth_getCode`:
+
+| Protocol | Docs source | Result |
+|---|---|---|
+| Nad.fun | `github.com/Naddotfun/contract-v3-abi` | Testnet closed Nov 12; repo only documents mainnet addresses |
+| LFJ (RouterLogic) | `developers.lfj.gg/deployment-addresses/monad_testnet` | Address matches docs exactly, but **empty bytecode on-chain** |
+| Nabla | `docs.nabla.fi/developers/contract-addresses/monad-testnet` | All 5 documented addresses (Portal, Router, Pyth Adapter, pools) **empty bytecode on-chain** |
+
+As a sanity check, Multicall3's canonical address (`0xcA11bde05977b3631167028862bE2a173976CA11`)
+*does* have live bytecode on the same RPC — so this isn't an RPC/tooling issue.
+Multicall3 is commonly auto-redeployed by anyone via a deterministic factory on
+a fresh chain, independent of whether individual protocols have redeployed —
+which fits a testnet-reset explanation: chain ID `10143` is live and advancing,
+but none of these three protocols have redeployed their contracts to the current
+chain state behind that RPC/chain-ID. Re-check liveness before wiring any DEX
+address in — don't trust docs alone, run `cast code <address> --rpc-url
+https://testnet-rpc.monad.xyz` first.
+
 ## Known issues / not wired up
-
-- **`prepare_swap` is stubbed.** The quote + slippage-adjusted calldata logic is
-  fully implemented (`src/lib/tools/actions.ts`) and generic over any Uniswap-V2-style
-  router, but no live router is configured (`DEX_ROUTER_ADDRESS` unset) — the tool
-  correctly reports "not configured" instead of guessing. Set the env var once a
-  router is confirmed live and it works with no code changes.
-
-- **Monad testnet appears to have reset around Nov 12, 2026.** While verifying DEX
-  candidates for `prepare_swap`, we checked documented Monad testnet contract
-  addresses from three independent protocols directly against
-  `https://testnet-rpc.monad.xyz` (chainId `10143`) via `eth_getCode`:
-
-  | Protocol | Docs source | Result |
-  |---|---|---|
-  | Nad.fun | `github.com/Naddotfun/contract-v3-abi` | Testnet closed Nov 12; repo only documents mainnet addresses |
-  | LFJ (RouterLogic) | `developers.lfj.gg/deployment-addresses/monad_testnet` | Address matches docs exactly, but **empty bytecode on-chain** |
-  | Nabla | `docs.nabla.fi/developers/contract-addresses/monad-testnet` | All 5 documented addresses (Portal, Router, Pyth Adapter, pools) **empty bytecode on-chain** |
-
-  As a sanity check, Multicall3's canonical address (`0xcA11bde05977b3631167028862bE2a173976CA11`)
-  *does* have live bytecode on the same RPC — so this isn't an RPC/tooling issue.
-  Multicall3 is commonly auto-redeployed by anyone via a deterministic factory on
-  a fresh chain, independent of whether individual protocols have redeployed —
-  which fits a testnet-reset explanation: chain ID `10143` is live and advancing,
-  but none of these three protocols have redeployed their contracts to the current
-  chain state behind that RPC/chain-ID. Re-check liveness before wiring any DEX
-  address in — don't trust docs alone, run `cast code <address> --rpc-url
-  https://testnet-rpc.monad.xyz` first.
 
 - **No indexer wired up.** `get_transaction_history` falls back to unfiltered
   `eth_getLogs` over the last ~5000 blocks for ERC-20 Transfer events — native MON

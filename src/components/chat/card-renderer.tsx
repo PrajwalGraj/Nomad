@@ -31,9 +31,16 @@ export function CardRenderer({ card }: { card: ToolCard }) {
     case "prepare_swap":
       return (
         <ConfirmationCard
-          actionLabel={`Swap ${card.tokenIn.symbol} → ${card.tokenOut.symbol}`}
+          actionLabel={
+            card.step === "approve"
+              ? `Approve ${card.tokenIn.symbol}`
+              : `Swap ${card.tokenIn.symbol} → ${card.tokenOut.symbol}`
+          }
           rows={[
             { label: "Amount in", value: `${card.amountInFormatted} ${card.tokenIn.symbol}` },
+            ...(card.step === "approve"
+              ? [{ label: "Note", value: "Approves Kuru's router; ask to swap again after this confirms." }]
+              : []),
             {
               label: "Expected out",
               value: card.expectedAmountOutFormatted
