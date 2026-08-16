@@ -14,11 +14,7 @@ import type { ToolCard } from "@/lib/tools/types";
 import { useContacts } from "@/hooks/use-contacts";
 import { Wallet, Send, Rocket, ArrowUpRight, Sparkles, Bot } from "lucide-react";
 
-const SUGGESTIONS = [
-  { label: "Check my wallet", prompt: "What's in my wallet?", icon: Wallet },
-  { label: "Send some MON", prompt: "Send 0.1 MON to 0x0000000000000000000000000000000000000000", icon: Send },
-  { label: "Launch a Token", prompt: "Launch token called Nomad symbol NOM supply 1000000", icon: Rocket },
-];
+const SUGGESTIONS = ["What's in my wallet?", "Send 0.1 MON to vitalik.eth", "Launch a token called Nomad"];
 
 function BackgroundGlow() {
   return (
@@ -110,9 +106,9 @@ export function Chat() {
           <h1 className="text-gradient-brand font-heading text-5xl font-bold tracking-tight sm:text-6xl pb-1">
             Where should we go?
           </h1>
-          <p className="text-balance text-sm text-muted-foreground sm:text-base max-w-sm">
+          <p className="text-sm text-muted-foreground sm:text-base">
             {isConnected
-              ? "Ask Nomad to check a balance, send MON, or launch a token on the Monad testnet."
+              ? "Ask Monad to check balance, send MON or launch a token"
               : "Connect your wallet to get started."}
           </p>
         </div>
@@ -122,24 +118,15 @@ export function Chat() {
         </div>
 
         {isConnected && (
-          <div className="grid w-full max-w-2xl grid-cols-1 gap-4 sm:grid-cols-3 mt-4">
-            {SUGGESTIONS.map((s, i) => (
+          <div className="flex flex-wrap items-center justify-center gap-2 mt-4">
+            {SUGGESTIONS.map((s) => (
               <button
-                key={s.label}
+                key={s}
                 type="button"
-                onClick={() => setInputText(s.prompt)}
-                className="group relative flex flex-col items-start justify-between gap-5 overflow-hidden rounded-[20px] border border-border/80 bg-white/70 p-5 text-left backdrop-blur-md shadow-sm transition-all duration-400 hover:-translate-y-1 hover:border-brand/40 hover:bg-white hover:shadow-[0_12px_30px_-10px_rgba(131,110,249,0.25)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring animate-fade-in-up"
-                style={{ animationDelay: `${250 + i * 100}ms`, animationFillMode: "both" }}
+                onClick={() => setInputText(s)}
+                className="rounded-full border border-border bg-background px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:border-brand/50 hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
               >
-                <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-accent text-brand transition-all duration-400 group-hover:scale-110 group-hover:bg-brand group-hover:text-white group-hover:shadow-[0_0_15px_rgba(131,110,249,0.4)]">
-                  <s.icon className="h-5 w-5" />
-                </div>
-                <div className="flex w-full items-center justify-between gap-2 mt-auto">
-                  <span className="text-sm font-semibold text-foreground/80 transition-colors group-hover:text-brand line-clamp-2">{s.label}</span>
-                  <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand/10 opacity-0 -translate-x-3 translate-y-3 transition-all duration-400 group-hover:opacity-100 group-hover:translate-x-0 group-hover:translate-y-0">
-                    <ArrowUpRight className="h-3 w-3 text-brand" />
-                  </div>
-                </div>
+                {s}
               </button>
             ))}
           </div>

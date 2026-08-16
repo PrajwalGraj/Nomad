@@ -7,12 +7,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAccount } from "wagmi";
 import { getTransactionHistory } from "@/lib/tools/read";
-import type { TransferEntry } from "@/lib/tools/types";
+import type { ActivityEntry } from "@/lib/tools/types";
 
 export function Sidebar({ isOpen = true }: { isOpen?: boolean }) {
   const { contacts, addContact, removeContact } = useContacts();
   const { address } = useAccount();
-  const [transfers, setTransfers] = useState<TransferEntry[]>([]);
+  const [activity, setActivity] = useState<ActivityEntry[]>([]);
   
   type LocalTx = { hash: string; summary: string; timestamp: number };
   const [localTxs, setLocalTxs] = useState<LocalTx[]>([]);
@@ -40,14 +40,14 @@ export function Sidebar({ isOpen = true }: { isOpen?: boolean }) {
     if (address) {
       setIsLoadingTx(true);
       getTransactionHistory(address, 5).then((card) => {
-        setTransfers(card.transfers);
+        setActivity(card.activity);
       }).catch(e => {
         console.error(e);
       }).finally(() => {
         setIsLoadingTx(false);
       });
     } else {
-      setTransfers([]);
+      setActivity([]);
       setLocalTxs([]);
     }
   }, [address]);
@@ -100,7 +100,7 @@ export function Sidebar({ isOpen = true }: { isOpen?: boolean }) {
                 // Merge local and on-chain transactions, deduplicating by hash
                 const allTxs = [
                   ...localTxs.map(t => ({ hash: t.hash, label: t.summary })),
-                  ...transfers.map(t => ({ hash: t.hash, label: `${t.isIncoming ? "Received" : "Sent"} ${t.amountFormatted} ${t.symbol} ${t.isIncoming ? "from" : "to"} ${t.isIncoming ? t.from : t.to}` }))
+                  ...activity.map(a => ({ hash: a.txHash, label: a.summary }))
                 ];
                 const uniqueTxs = Array.from(new Map(allTxs.map(item => [item.hash, item])).values()).slice(0, 4);
                 
