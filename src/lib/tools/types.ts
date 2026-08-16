@@ -60,21 +60,19 @@ export type TokenInfoCard = {
   priceNote: string;
 };
 
-export type TransferEntry = {
+export type ActivityEntry = {
   txHash: `0x${string}`;
-  blockNumber: string;
-  tokenSymbol: string;
-  tokenAddress: `0x${string}`;
-  from: `0x${string}`;
-  to: `0x${string}`;
-  amountFormatted: string;
-  direction: "in" | "out";
+  timestamp: string; // unix seconds, as string
+  status: "success" | "failed";
+  direction: "in" | "out" | "self";
+  counterparty: `0x${string}`;
+  summary: string; // short plain-English description, e.g. "Sent 0.5 MON"
 };
 
 export type TxHistoryCard = {
   kind: "tx_history";
   address: `0x${string}`;
-  transfers: TransferEntry[];
+  activity: ActivityEntry[];
   note: string;
 };
 

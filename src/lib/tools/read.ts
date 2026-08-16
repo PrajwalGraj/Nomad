@@ -1,26 +1,16 @@
-import { formatEther, formatUnits, parseAbiItem, type Address } from "viem";
+import { decodeFunctionData, formatEther, formatUnits, getAddress, toFunctionSelector, type Address } from "viem";
 import { publicClient } from "@/lib/viem";
 import { erc20Abi } from "@/lib/contracts/erc20";
+import { nomadTokenFactoryAbi, FACTORY_ADDRESS } from "@/lib/contracts/factory";
 import { KNOWN_TOKENS } from "@/lib/tokens";
 import type {
+  ActivityEntry,
   DecodedEvent,
   ExplainTransactionCard,
   TokenInfoCard,
-  TransferEntry,
   TxHistoryCard,
   WalletOverviewCard,
 } from "./types";
-
-const transferEvent = parseAbiItem(
-  "event Transfer(address indexed from, address indexed to, uint256 value)"
-);
-
-// Total block window scanned (in chunks — see getTransactionHistory) without an indexer.
-const LOG_SCAN_BLOCK_WINDOW = BigInt(process.env.NOMAD_LOG_SCAN_BLOCKS ?? 5000);
-// Unfiltered (no contract address) eth_getLogs queries on this RPC were observed
-// to hang indefinitely past ~200-500 blocks in one request — chunking keeps each
-// request well under that so a timeout (see lib/viem.ts) can catch it instead of hanging.
-const LOG_SCAN_CHUNK_SIZE = 100n;
 
 export async function getWalletOverview(address: Address): Promise<WalletOverviewCard> {
   const [nativeBalance, txCount] = await Promise.all([
@@ -81,91 +71,154 @@ export async function getTokenInfo(tokenAddress: Address): Promise<TokenInfoCard
   };
 }
 
+// Monad's own explorer (Monadscan) is Etherscan-compatible and served through
+// Etherscan's unified multichain API — one key works across chains, keyed by chainid.
+const ETHERSCAN_API_BASE = "https://api.etherscan.io/v2/api";
+const MONAD_TESTNET_CHAIN_ID = 10143;
+
+const TRANSFER_SELECTOR = toFunctionSelector("transfer(address,uint256)");
+const APPROVE_SELECTOR = toFunctionSelector("approve(address,uint256)");
+const LAUNCH_TOKEN_SELECTOR = toFunctionSelector("launchToken(string,string,uint256)");
+
+type EtherscanTx = {
+  hash: string;
+  from: string;
+  to: string;
+  value: string;
+  input: string;
+  isError: string;
+  txreceipt_status: string;
+  timeStamp: string;
+  contractAddress: string;
+  functionName: string;
+};
+
 export async function getTransactionHistory(address: Address, limit: number): Promise<TxHistoryCard> {
-  const latestBlock = await publicClient.getBlockNumber();
-  const windowStart = latestBlock > LOG_SCAN_BLOCK_WINDOW ? latestBlock - LOG_SCAN_BLOCK_WINDOW : 0n;
-
-  const logs: {
-    address: Address;
-    blockNumber: bigint | null;
-    transactionHash: `0x${string}` | null;
-    args: { from?: Address; to?: Address; value?: bigint };
-  }[] = [];
-  let chunkEnd = latestBlock;
-  let chunksWithErrors = 0;
-  let blocksScanned = 0n;
-
-  while (chunkEnd >= windowStart && logs.length < limit) {
-    const chunkStart = chunkEnd - LOG_SCAN_CHUNK_SIZE + 1n > windowStart ? chunkEnd - LOG_SCAN_CHUNK_SIZE + 1n : windowStart;
-    try {
-      const [outgoing, incoming] = await Promise.all([
-        publicClient.getLogs({ event: transferEvent, args: { from: address }, fromBlock: chunkStart, toBlock: chunkEnd }),
-        publicClient.getLogs({ event: transferEvent, args: { to: address }, fromBlock: chunkStart, toBlock: chunkEnd }),
-      ]);
-      // ERC-721's Transfer(address,address,uint256) shares ERC-20's topic0 hash but
-      // indexes tokenId as a 3rd topic instead of putting value in data — viem still
-      // matches it against our event ABI and leaves args.value as undefined rather
-      // than erroring. Drop those before anything downstream calls formatUnits on it.
-      const isErc20Shaped = (l: (typeof outgoing)[number]) => l.topics.length === 3 && l.args.value !== undefined;
-      logs.push(...outgoing.filter(isErc20Shaped), ...incoming.filter(isErc20Shaped));
-    } catch {
-      chunksWithErrors++;
-    }
-    blocksScanned += chunkEnd - chunkStart + 1n;
-    chunkEnd = chunkStart - 1n;
-  }
-
-  if (logs.length === 0 && chunksWithErrors > 0) {
+  const apiKey = process.env.ETHERSCAN_API_KEY;
+  if (!apiKey) {
     return {
       kind: "tx_history",
       address,
-      transfers: [],
-      note: `This RPC rejected or timed out on every chunk of a log scan over the last ${blocksScanned} blocks. Full transaction history needs an indexer (Envio/Goldsky) — none is wired up yet.`,
+      activity: [],
+      note: "ETHERSCAN_API_KEY isn't set — recent activity is powered by Monadscan's Etherscan-compatible API. Get a free key at etherscan.io and add it to .env.local.",
     };
   }
 
-  logs.sort((a, b) => (b.blockNumber ?? 0n) > (a.blockNumber ?? 0n) ? 1 : -1);
-  const trimmed = logs.slice(0, limit);
+  const url = new URL(ETHERSCAN_API_BASE);
+  url.searchParams.set("chainid", String(MONAD_TESTNET_CHAIN_ID));
+  url.searchParams.set("module", "account");
+  url.searchParams.set("action", "txlist");
+  url.searchParams.set("address", address);
+  url.searchParams.set("startblock", "0");
+  url.searchParams.set("endblock", "99999999");
+  url.searchParams.set("page", "1");
+  url.searchParams.set("offset", String(limit));
+  url.searchParams.set("sort", "desc");
+  url.searchParams.set("apikey", apiKey);
 
-  const uniqueTokens = [...new Set(trimmed.map((l) => l.address))];
-  const metaResults = await publicClient.multicall({
-    contracts: uniqueTokens.flatMap((addr) => [
-      { address: addr, abi: erc20Abi, functionName: "symbol" } as const,
-      { address: addr, abi: erc20Abi, functionName: "decimals" } as const,
-    ]),
-    allowFailure: true,
-  });
+  const res = await fetch(url.toString());
+  if (!res.ok) throw new Error(`Monadscan request failed (${res.status}).`);
+  const body = (await res.json()) as { status: string; message: string; result: EtherscanTx[] | string };
+
+  if (body.status !== "1") {
+    // Monadscan returns status "0" for a clean "no activity yet" address too, not just errors.
+    if (body.message === "No transactions found") {
+      return { kind: "tx_history", address, activity: [], note: "No transactions found for this address yet." };
+    }
+    throw new Error(`Monadscan error: ${typeof body.result === "string" ? body.result : body.message}`);
+  }
+
+  const txs = body.result as EtherscanTx[];
+
+  // Batch-fetch symbol/decimals for every contract a transfer/approve call targets,
+  // so summaries can say "Sent 5 NOMAD" instead of leaving a raw token address in.
+  const tokenTargets = [
+    ...new Set(
+      txs
+        .filter((tx) => [TRANSFER_SELECTOR, APPROVE_SELECTOR].includes(tx.input.slice(0, 10) as `0x${string}`))
+        .map((tx) => getAddress(tx.to))
+    ),
+  ];
+  const tokenMetaResults = tokenTargets.length
+    ? await publicClient.multicall({
+        contracts: tokenTargets.flatMap((addr) => [
+          { address: addr, abi: erc20Abi, functionName: "symbol" } as const,
+          { address: addr, abi: erc20Abi, functionName: "decimals" } as const,
+        ]),
+        allowFailure: true,
+      })
+    : [];
   const tokenMeta = new Map<string, { symbol: string; decimals: number }>();
-  uniqueTokens.forEach((addr, i) => {
-    const symbolResult = metaResults[i * 2];
-    const decimalsResult = metaResults[i * 2 + 1];
-    tokenMeta.set(addr, {
-      symbol: symbolResult.status === "success" ? (symbolResult.result as string) : "???",
-      decimals: decimalsResult.status === "success" ? (decimalsResult.result as number) : 18,
+  tokenTargets.forEach((addr, i) => {
+    const symbolResult = tokenMetaResults[i * 2];
+    const decimalsResult = tokenMetaResults[i * 2 + 1];
+    tokenMeta.set(addr.toLowerCase(), {
+      symbol: symbolResult?.status === "success" ? (symbolResult.result as string) : "tokens",
+      decimals: decimalsResult?.status === "success" ? (decimalsResult.result as number) : 18,
     });
   });
 
-  const transfers: TransferEntry[] = trimmed.map((log) => {
-    const meta = tokenMeta.get(log.address) ?? { symbol: "???", decimals: 18 };
-    const from = log.args.from as Address;
-    const to = log.args.to as Address;
-    return {
-      txHash: log.transactionHash!,
-      blockNumber: (log.blockNumber ?? 0n).toString(),
-      tokenSymbol: meta.symbol,
-      tokenAddress: log.address,
-      from,
-      to,
-      amountFormatted: formatUnits(log.args.value as bigint, meta.decimals),
-      direction: from.toLowerCase() === address.toLowerCase() ? "out" : "in",
-    };
-  });
+  const activity: ActivityEntry[] = txs.map((tx) => summarizeActivity(tx, address, tokenMeta));
 
   return {
     kind: "tx_history",
     address,
-    transfers,
-    note: `Scanned ERC-20 Transfer logs over the last ${blocksScanned} blocks${chunksWithErrors > 0 ? ` (${chunksWithErrors} chunk(s) failed and were skipped)` : ""}. Native MON sends don't emit logs, so they won't appear here — that needs an indexer.`,
+    activity,
+    note: `Last ${activity.length} transaction(s) from Monadscan, most recent first.`,
+  };
+}
+
+function summarizeActivity(
+  tx: EtherscanTx,
+  address: Address,
+  tokenMeta: Map<string, { symbol: string; decimals: number }>
+): ActivityEntry {
+  const isCreation = tx.to === "";
+  const to = isCreation ? getAddress(tx.contractAddress) : getAddress(tx.to);
+  const from = getAddress(tx.from);
+  const direction: ActivityEntry["direction"] =
+    from.toLowerCase() === address.toLowerCase() ? "out" : to.toLowerCase() === address.toLowerCase() ? "in" : "self";
+  const status: ActivityEntry["status"] = tx.isError === "1" || tx.txreceipt_status === "0" ? "failed" : "success";
+  const methodId = tx.input.slice(0, 10);
+
+  let summary: string;
+  if (isCreation) {
+    summary = "Deployed a contract";
+  } else if (methodId === LAUNCH_TOKEN_SELECTOR && FACTORY_ADDRESS && to.toLowerCase() === FACTORY_ADDRESS.toLowerCase()) {
+    try {
+      const { args } = decodeFunctionData({ abi: nomadTokenFactoryAbi, data: tx.input as `0x${string}` });
+      summary = `Launched token "${args[1]}"`;
+    } catch {
+      summary = "Launched a token";
+    }
+  } else if (methodId === TRANSFER_SELECTOR) {
+    const meta = tokenMeta.get(to.toLowerCase()) ?? { symbol: "tokens", decimals: 18 };
+    try {
+      const { args } = decodeFunctionData({ abi: erc20Abi, data: tx.input as `0x${string}` });
+      const [, amount] = args as [Address, bigint];
+      summary = `Sent ${formatUnits(amount, meta.decimals)} ${meta.symbol}`;
+    } catch {
+      summary = `Sent ${meta.symbol}`;
+    }
+  } else if (methodId === APPROVE_SELECTOR) {
+    const meta = tokenMeta.get(to.toLowerCase()) ?? { symbol: "tokens", decimals: 18 };
+    summary = `Approved ${meta.symbol} for spending`;
+  } else if (tx.input === "0x") {
+    const valueFormatted = formatEther(BigInt(tx.value));
+    summary = direction === "out" ? `Sent ${valueFormatted} MON` : `Received ${valueFormatted} MON`;
+  } else if (tx.functionName) {
+    summary = tx.functionName.split("(")[0];
+  } else {
+    summary = "Contract interaction";
+  }
+
+  return {
+    txHash: tx.hash as `0x${string}`,
+    timestamp: tx.timeStamp,
+    status,
+    direction,
+    counterparty: direction === "out" ? to : from,
+    summary,
   };
 }
 

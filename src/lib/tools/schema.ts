@@ -77,7 +77,7 @@ const readTools: Tool[] = [
   {
     name: "get_transaction_history",
     description:
-      "Get recent ERC-20 transfer activity for a wallet address, scanned directly from chain logs (no indexer is wired up, so native MON sends without an ERC-20 transfer are not shown).",
+      "Get a wallet address's recent on-chain activity (native MON sends, ERC-20 transfers/approvals, token launches, contract calls) via Monad's Etherscan-compatible explorer API, each with a short plain-English summary and a link to the explorer.",
     input_schema: {
       type: "object",
       properties: {

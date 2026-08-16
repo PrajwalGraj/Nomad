@@ -3,7 +3,7 @@ import type { TokenInfoCard as TokenInfoCardType } from "@/lib/tools/types";
 
 export function TokenInfoCard({ card }: { card: TokenInfoCardType }) {
   return (
-    <Card className="w-full max-w-md">
+    <Card className="tool-card w-full max-w-md ring-0">
       <CardHeader>
         <CardTitle className="text-sm font-medium">
           {card.name} <span className="text-muted-foreground">({card.symbol})</span>

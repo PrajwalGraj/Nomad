@@ -4,6 +4,8 @@ import { TokenInfoCard } from "./cards/token-info-card";
 import { TxHistoryCard } from "./cards/tx-history-card";
 import { ExplainTransactionCard } from "./cards/explain-transaction-card";
 import { ConfirmationCard } from "./cards/confirmation-card";
+import { SwapTokenPair } from "./cards/swap-token-pair";
+import { TokenIcon } from "./cards/token-icon";
 
 export function CardRenderer({ card }: { card: ToolCard }) {
   switch (card.kind) {
@@ -19,6 +21,7 @@ export function CardRenderer({ card }: { card: ToolCard }) {
       return (
         <ConfirmationCard
           actionLabel={`Send ${card.token.symbol}`}
+          cornerIcon={<TokenIcon symbol={card.token.symbol} className="size-10" />}
           rows={[
             { label: "Amount", value: `${card.amountFormatted} ${card.token.symbol}` },
             { label: "To", value: card.to },
@@ -35,6 +38,13 @@ export function CardRenderer({ card }: { card: ToolCard }) {
             card.step === "approve"
               ? `Approve ${card.tokenIn.symbol}`
               : `Swap ${card.tokenIn.symbol} → ${card.tokenOut.symbol}`
+          }
+          titleContent={
+            <SwapTokenPair
+              label={card.step === "approve" ? "Approve" : "Swap"}
+              tokenIn={card.tokenIn}
+              tokenOut={card.tokenOut}
+            />
           }
           rows={[
             { label: "Amount in", value: `${card.amountInFormatted} ${card.tokenIn.symbol}` },

@@ -1,23 +1,17 @@
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { TxHashLink } from "./tx-hash-link";
 import type { ExplainTransactionCard as ExplainTransactionCardType } from "@/lib/tools/types";
 
 export function ExplainTransactionCard({ card }: { card: ExplainTransactionCardType }) {
   return (
-    <Card className="w-full max-w-md">
+    <Card className="tool-card w-full max-w-md ring-0">
       <CardHeader className="flex flex-row items-center justify-between space-y-0">
         <CardTitle className="text-sm font-medium text-muted-foreground">Transaction</CardTitle>
         <Badge variant={card.status === "success" ? "default" : "destructive"}>{card.status}</Badge>
       </CardHeader>
       <CardContent className="space-y-3">
-        <a
-          href={`https://testnet.monadexplorer.com/tx/${card.hash}`}
-          target="_blank"
-          rel="noreferrer"
-          className="block truncate font-mono text-xs text-muted-foreground hover:underline"
-        >
-          {card.hash}
-        </a>
+        <TxHashLink hash={card.hash} status={card.status === "success" ? "success" : "failed"} />
         <div className="grid grid-cols-2 gap-2 text-sm">
           <span className="text-muted-foreground">From</span>
           <span className="truncate text-right font-mono text-xs">{card.from}</span>

@@ -5,18 +5,25 @@ import { useSendTransaction, useWaitForTransactionReceipt } from "wagmi";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { TxHashLink } from "./tx-hash-link";
 import type { TxParams } from "@/lib/tools/types";
 
 type Row = { label: string; value: string };
 
 export function ConfirmationCard({
   actionLabel,
+  titleContent,
+  cornerIcon,
   rows,
   tx,
   estimatedGas,
   disabledReason,
 }: {
   actionLabel: string;
+  /** Optional richer header (e.g. token icons) shown instead of the plain actionLabel text. */
+  titleContent?: React.ReactNode;
+  /** Optional token/brand icon pinned to the top-right of the header. */
+  cornerIcon?: React.ReactNode;
   rows: Row[];
   tx: TxParams | undefined;
   estimatedGas?: string;
@@ -29,12 +36,17 @@ export function ConfirmationCard({
   const canConfirm = !!tx && !disabledReason && !rejected && !hash;
 
   return (
-    <Card className="w-full max-w-md border-primary/30">
-      <CardHeader className="flex flex-row items-center justify-between space-y-0">
-        <CardTitle className="text-sm font-medium">{actionLabel}</CardTitle>
-        {isConfirmed && <Badge>confirmed</Badge>}
-        {hash && !isConfirmed && <Badge variant="secondary">{isConfirming ? "confirming…" : "submitted"}</Badge>}
-        {rejected && <Badge variant="destructive">rejected</Badge>}
+    <Card className="tool-card w-full max-w-md ring-0">
+      <CardHeader className="flex flex-row items-start justify-between space-y-0">
+        <CardTitle className="min-w-0 flex-1 text-sm font-medium" aria-label={actionLabel}>
+          {titleContent ?? actionLabel}
+        </CardTitle>
+        <div className="flex items-center gap-2">
+          {cornerIcon}
+          {isConfirmed && <Badge>confirmed</Badge>}
+          {hash && !isConfirmed && <Badge variant="secondary">{isConfirming ? "confirming…" : "submitted"}</Badge>}
+          {rejected && <Badge variant="destructive">rejected</Badge>}
+        </div>
       </CardHeader>
       <CardContent className="space-y-2">
         {rows.map((r) => (
@@ -51,16 +63,7 @@ export function ConfirmationCard({
         )}
         {disabledReason && <p className="text-xs text-destructive">{disabledReason}</p>}
         {error && <p className="text-xs text-destructive">{error.message}</p>}
-        {hash && (
-          <a
-            href={`https://testnet.monadexplorer.com/tx/${hash}`}
-            target="_blank"
-            rel="noreferrer"
-            className="block truncate font-mono text-xs text-muted-foreground hover:underline"
-          >
-            {hash}
-          </a>
-        )}
+        {hash && <TxHashLink hash={hash} status={isConfirmed ? "success" : "neutral"} />}
       </CardContent>
       {!hash && !rejected && (
         <CardFooter className="gap-2">

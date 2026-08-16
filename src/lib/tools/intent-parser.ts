@@ -21,6 +21,22 @@ export function parseIntent(rawText: string): ParsedIntent | null {
     return { name: "prepare_send", input: { to, amount, ...(tokenSymbol ? { tokenSymbol } : {}) } };
   }
 
+  const swapMatch = text.match(
+    /\bswap\s+([\d.]+)\s*([a-zA-Z]{2,10})\s+(?:for|to|into)\s+([a-zA-Z]{2,10})(?:\s+(?:with|at)\s+([\d.]+)%?\s*slippage)?/i
+  );
+  if (swapMatch) {
+    const [, amountIn, tokenInSymbol, tokenOutSymbol, slippagePct] = swapMatch;
+    return {
+      name: "prepare_swap",
+      input: {
+        tokenInSymbol,
+        tokenOutSymbol,
+        amountIn,
+        ...(slippagePct ? { slippageBps: Math.round(Number(slippagePct) * 100) } : {}),
+      },
+    };
+  }
+
   if (/\b(launch|create|deploy)\b.*\btoken\b/i.test(text)) {
     const nameMatch = text.match(/\b(?:called|named)\s+["“]?([a-zA-Z0-9 ]+?)["”]?(?=\s+(?:with|,|symbol|ticker)|$)/i);
     const symbolMatch = text.match(/\b(?:symbol|ticker)\s+["“]?([a-zA-Z0-9]+)["”]?/i);
@@ -43,7 +59,7 @@ export function parseIntent(rawText: string): ParsedIntent | null {
     return { name: "get_token_info", input: { tokenAddress: text.match(ADDRESS)![0] } };
   }
 
-  if (/\b(transaction history|recent transactions|my transactions|tx history|recent transfers)\b/i.test(text)) {
+  if (/\b(transaction history|recent transactions|recent activity|my transactions|tx history|recent transfers)\b/i.test(text)) {
     const addressMatch = text.match(ADDRESS);
     return { name: "get_transaction_history", input: addressMatch ? { address: addressMatch[0] } : {} };
   }
@@ -58,10 +74,11 @@ export function parseIntent(rawText: string): ParsedIntent | null {
 
 const INTENT_RESPONSES: Record<string, string> = {
   prepare_send: "Prepared that transfer — review and sign below.",
+  prepare_swap: "Prepared that swap — review and sign below.",
   prepare_token_launch: "Prepared that token deployment — review and sign below.",
   get_wallet_overview: "Here's your wallet overview.",
   get_token_info: "Here's that token's info.",
-  get_transaction_history: "Here's your recent transfer activity.",
+  get_transaction_history: "Here's your recent activity.",
   explain_transaction: "Here's what happened in that transaction.",
 };
 

@@ -69,6 +69,7 @@ export function Chat() {
     }
   }
 
+
   if (items.length === 0) {
     return (
       <div className="relative flex flex-1 flex-col items-center justify-start gap-7 overflow-hidden p-4 pt-[14vh] sm:pt-[18vh]">

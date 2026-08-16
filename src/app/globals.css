@@ -293,6 +293,28 @@
   color: transparent;
 }
 
+/* ---- Chat tool cards -------------------------------------------------- */
+/* Shared brand-purple treatment for the wallet/swap/send/tx cards rendered
+   inline in chat: a soft top wash, a tinted ring instead of the neutral
+   default, and a subtle brand glow that lifts slightly on hover. Pair with
+   `ring-0` on the Card itself so this box-shadow is the only border drawn. */
+.tool-card {
+  position: relative;
+  background-image: linear-gradient(180deg, var(--brand-soft) 0%, var(--card) 60%);
+  box-shadow:
+    0 0 0 1px color-mix(in oklch, var(--brand) 24%, transparent),
+    0 14px 32px -22px color-mix(in oklch, var(--brand) 70%, transparent);
+  transition:
+    box-shadow 240ms ease,
+    transform 240ms ease;
+}
+
+.tool-card:hover {
+  box-shadow:
+    0 0 0 1px color-mix(in oklch, var(--brand) 36%, transparent),
+    0 18px 40px -18px color-mix(in oklch, var(--brand) 75%, transparent);
+}
+
 /* Respect reduced motion everywhere, unconditionally. */
 @media (prefers-reduced-motion: reduce) {
   *,
