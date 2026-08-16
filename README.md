@@ -5,6 +5,11 @@ or prepare send/swap/launch transactions — the agent (Claude, via Anthropic to
 use) never signs anything. Every action tool returns unsigned calldata; you review
 it on a confirmation card and sign manually with your connected wallet.
 
+## Deployed
+
+- **NomadTokenFactory (Monad testnet):** [`0x526F54924b8675f6D15e114C48F830a6a418e408`](https://testnet.monadexplorer.com/address/0x526F54924b8675f6D15e114C48F830a6a418e408)
+- **Live app:** _pending deploy_
+
 ## Stack
 
 - Next.js 14+ (App Router) / TypeScript / Tailwind / shadcn/ui
