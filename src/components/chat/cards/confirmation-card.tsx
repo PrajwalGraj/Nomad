@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { TxHashLink } from "./tx-hash-link";
+import { TxConfirmedBanner } from "./tx-confirmed-banner";
 import type { TxParams } from "@/lib/tools/types";
 import { useEffect } from "react";
 
@@ -64,49 +65,52 @@ export function ConfirmationCard({
   }, [isConfirmed, hash, actionLabel, rows]);
 
   return (
-    <Card className="tool-card w-full max-w-md ring-0">
-      <CardHeader className="flex flex-row items-start justify-between space-y-0">
-        <CardTitle className="min-w-0 flex-1 text-sm font-medium" aria-label={actionLabel}>
-          {titleContent ?? actionLabel}
-        </CardTitle>
-        <div className="flex items-center gap-2">
-          {cornerIcon}
-          {isConfirmed && <Badge>confirmed</Badge>}
-          {hash && !isConfirmed && <Badge variant="secondary">{isConfirming ? "confirming…" : "submitted"}</Badge>}
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-2">
-        {hero}
-        {rows.map((r) => (
-          <div key={r.label} className="flex items-baseline justify-between text-sm">
-            <span className="text-muted-foreground">{r.label}</span>
-            <span className="text-right font-mono text-xs">{r.value}</span>
+    <div className="flex flex-col gap-2">
+      <Card className="tool-card w-full max-w-md ring-0">
+        <CardHeader className="flex flex-row items-start justify-between space-y-0">
+          <CardTitle className="min-w-0 flex-1 text-sm font-medium" aria-label={actionLabel}>
+            {titleContent ?? actionLabel}
+          </CardTitle>
+          <div className="flex items-center gap-2">
+            {cornerIcon}
+            {isConfirmed && <Badge>confirmed</Badge>}
+            {hash && !isConfirmed && <Badge variant="secondary">{isConfirming ? "confirming…" : "submitted"}</Badge>}
           </div>
-        ))}
-        {estimatedGas && (
-          <div className="flex items-baseline justify-between text-sm">
-            <span className="text-muted-foreground">Estimated gas</span>
-            <span className="text-right font-mono text-xs">{estimatedGas}</span>
-          </div>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          {hero}
+          {rows.map((r) => (
+            <div key={r.label} className="flex items-baseline justify-between text-sm">
+              <span className="text-muted-foreground">{r.label}</span>
+              <span className="text-right font-mono text-xs">{r.value}</span>
+            </div>
+          ))}
+          {estimatedGas && (
+            <div className="flex items-baseline justify-between text-sm">
+              <span className="text-muted-foreground">Estimated gas</span>
+              <span className="text-right font-mono text-xs">{estimatedGas}</span>
+            </div>
+          )}
+          {disabledReason && <p className="text-xs text-destructive">{disabledReason}</p>}
+          {error && <p className="text-xs text-destructive">{error.message}</p>}
+          {hash && <TxHashLink hash={hash} status={isConfirmed ? "success" : "neutral"} />}
+        </CardContent>
+        {!hash && (
+          <CardFooter className="gap-2">
+            <Button
+              className="flex-1"
+              disabled={!canConfirm || isPending}
+              onClick={() => tx && sendTransaction({ to: tx.to, value: BigInt(tx.value), data: tx.data })}
+            >
+              {isPending ? "Confirm in wallet…" : "Confirm"}
+            </Button>
+            <Button variant="outline" className="flex-1" disabled={isPending}>
+              Reject
+            </Button>
+          </CardFooter>
         )}
-        {disabledReason && <p className="text-xs text-destructive">{disabledReason}</p>}
-        {error && <p className="text-xs text-destructive">{error.message}</p>}
-        {hash && <TxHashLink hash={hash} status={isConfirmed ? "success" : "neutral"} />}
-      </CardContent>
-      {!hash && (
-        <CardFooter className="gap-2">
-          <Button
-            className="flex-1"
-            disabled={!canConfirm || isPending}
-            onClick={() => tx && sendTransaction({ to: tx.to, value: BigInt(tx.value), data: tx.data })}
-          >
-            {isPending ? "Confirm in wallet…" : "Confirm"}
-          </Button>
-          <Button variant="outline" className="flex-1" disabled={isPending}>
-            Reject
-          </Button>
-        </CardFooter>
-      )}
-    </Card>
+      </Card>
+      {isConfirmed && hash && <TxConfirmedBanner hash={hash} />}
+    </div>
   );
 }
