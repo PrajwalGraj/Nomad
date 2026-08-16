@@ -12,7 +12,11 @@ const MAX_AGENT_ITERATIONS = 6;
 
 export async function POST(req: Request) {
   const body = await req.json();
-  const { messages, walletAddress } = body as { messages: MessageParam[]; walletAddress?: string };
+  const { messages, walletAddress, contacts } = body as { 
+    messages: MessageParam[]; 
+    walletAddress?: string;
+    contacts?: { name: string; address: string }[];
+  };
 
   if (!Array.isArray(messages) || messages.length === 0) {
     return NextResponse.json({ error: "messages is required." }, { status: 400 });
@@ -26,7 +30,18 @@ export async function POST(req: Request) {
   // so these work even without ANTHROPIC_API_KEY configured. Anything the parser
   // isn't confident about falls through to the full tool-use agent below.
   const lastMessage = messages[messages.length - 1];
-  const lastText = lastMessage?.role === "user" && typeof lastMessage.content === "string" ? lastMessage.content : null;
+  let lastText = lastMessage?.role === "user" && typeof lastMessage.content === "string" ? lastMessage.content : null;
+
+  if (lastText && contacts && contacts.length > 0) {
+    // Pre-resolve contact names to their addresses so the fast-path regex can parse them
+    for (const contact of contacts) {
+      // Escape special characters in contact name to prevent regex crashes
+      const escapedName = contact.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const regex = new RegExp(`\\b${escapedName}\\b`, "gi");
+      lastText = lastText.replace(regex, contact.address);
+    }
+  }
+
   const intent = lastText ? parseIntent(lastText) : null;
 
   if (intent) {
@@ -49,17 +64,25 @@ export async function POST(req: Request) {
   }
 
   if (!process.env.ANTHROPIC_API_KEY) {
-    return NextResponse.json({ error: "ANTHROPIC_API_KEY is not configured on the server." }, { status: 500 });
+    return NextResponse.json({ 
+      error: `[DEBUG: contacts=${contacts?.length || 0}, text="${lastText}"] My AI agent is disabled (missing ANTHROPIC_API_KEY) so I couldn't understand that request. I can only handle exact commands right now.` 
+    }, { status: 500 });
   }
 
   const history: MessageParam[] = [...messages];
   const cards: ToolCard[] = [];
+  
+  let dynamicSystemPrompt = SYSTEM_PROMPT;
+  if (contacts && contacts.length > 0) {
+    const contactsList = contacts.map(c => `- ${c.name}: ${c.address}`).join("\n");
+    dynamicSystemPrompt += `\n\nThe user has saved the following wallet addresses as contacts. When the user refers to one of these names, you MUST use their corresponding wallet address for transactions:\n${contactsList}`;
+  }
 
   for (let iteration = 0; iteration < MAX_AGENT_ITERATIONS; iteration++) {
     const response = await anthropic.messages.create({
       model: NOMAD_MODEL,
       max_tokens: 1024,
-      system: SYSTEM_PROMPT,
+      system: dynamicSystemPrompt,
       tools: allTools,
       messages: history,
     });
