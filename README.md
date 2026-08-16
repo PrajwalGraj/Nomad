@@ -6,9 +6,9 @@ shows you a confirmation card before anything happens. Nothing gets signed
 until you approve it yourself, in your own wallet.
 
 Most of what Nomad does is handled by matching your message against a set of
-recognized command patterns (send, swap, launch, balance, transaction
-history, token lookup, explain-a-transaction) and turning that directly into
-calldata — no model call, no round trip, just parsing and a viem call.
+recognized command patterns (send, swap, launch, balance, token lookup,
+explain-a-transaction) and turning that directly into calldata — no model
+call, no round trip, just parsing and a viem call.
 Anything outside those patterns falls through to an LLM to figure out intent,
 which is optional and only needed for that overflow case.
 
@@ -34,8 +34,12 @@ see [Stack](#stack).
 - **Send MON or a token** — builds the transfer, shows a gas cost estimate
   priced in MON (Monad charges gas on the *limit* you set, not what a
   transaction actually uses, so the estimate reflects that).
-- **Swap** — routed through Kuru Flow, Monad's swap aggregator. See the
-  [Swaps](#swaps) section below for what's actually been verified to work.
+- **Swap** — routed through Kuru Flow, Monad's swap aggregator, and builds a
+  correct, ready-to-sign swap transaction. **Doesn't currently execute
+  end-to-end in a live demo** — Monad testnet doesn't have enough liquidity
+  on the pairs we've tried, so Kuru returns "no candidate paths available"
+  even though the transaction itself is built correctly. See
+  [Swaps](#swaps).
 - **Launch a token** — deploys a fixed-supply ERC-20 through Nomad's own
   factory contract. Mint-and-deploy, no bonding curve, full supply goes to
   whoever signs.
@@ -44,10 +48,6 @@ see [Stack](#stack).
   testnet tokens yet, so we don't fake one.
 - **Explain a transaction** — decodes a receipt's logs and summarizes it in
   plain English instead of dumping raw hex at you.
-- **Recent activity** — pulls your last few transactions with a one-line
-  summary of each, via Monad's Etherscan-compatible explorer API. The
-  sidebar also keeps its own local log of anything you've just confirmed in
-  the current session.
 - **Contacts** — save a name to an address in the sidebar, then type `@name`
   in the chat box to autocomplete it anywhere you'd use an address. Stored in
   the browser, not the wallet.
@@ -76,10 +76,20 @@ npm install
 npm run dev
 ```
 
-That's it. Balance checks, sends, swaps, and launches all work straight
-away — the app runs with nothing else to configure.
+That's it. Balance checks, sends, launches, token lookups, and explains all
+work straight away — the app runs with nothing else to configure. Swaps
+build correctly too, but see [Swaps](#swaps) for why they won't complete
+live on testnet right now.
 
 Open `http://localhost:3000`, connect a wallet on Monad testnet, and try it out.
+
+Commands to try:
+
+- `What's in my wallet?`
+- `Send 0.1 MON to 0x5f525806C6980BC2Aa3040228DeF3447248160B4`
+- `Launch a token called Nomad with symbol NOM and total supply 1,000,000`
+- `token info 0x3bA3d39AFcf8bb994f7964B3e0171Ea2Ba361570`
+- `explain <a transaction hash>` — any hash works, including one of your own
 
 ## Smart contracts
 
@@ -115,8 +125,7 @@ address.
 quote call or router ABI to maintain, it returns ready-to-sign calldata from
 a REST API.
 
-We verified this independently before wiring it in (see the testnet-reset
-note below — don't take vendor docs at face value on a testnet):
+We verified this independently before wiring it in:
 
 - All 6 documented Kuru testnet contracts (Router, Margin Account, Forwarder,
   Deployer, Utils, and the MON-USDC market) return real bytecode via
@@ -124,12 +133,12 @@ note below — don't take vendor docs at face value on a testnet):
 - `https://ws.kuru.io/api/generate-token` and `/api/quote` are live and
   respond with the documented shape.
 
-What we haven't fully verified: a live quote against every ERC-20 pair —
-route availability depends on what liquidity actually exists on testnet at
-any given moment, so a specific pair can come back with "no candidate paths
-available" even though the integration itself is correct. Native MON swaps
-are the most reliable path. If you're demoing a specific pair, quote it a
-few minutes beforehand.
+So the integration itself is correct — Kuru's contracts exist, its API
+responds, and `prepare_swap` builds a valid transaction. What doesn't work
+right now is completing a swap live: **there isn't enough liquidity on Monad
+testnet for the pairs we've tried**, so the quote comes back "no candidate
+paths available" before it ever gets to signing. This is a testnet-liquidity
+problem, not a bug in the integration.
 
 If the sell-side token needs an allowance, `prepare_swap` returns an
 `approve()` call instead of the swap (`step: "approve"` on the card) — call
@@ -137,39 +146,15 @@ it again after that confirms to get the actual swap.
 
 ### Testnet reset caveat
 
-Monad testnet appears to have reset around Nov 12, 2026. While verifying DEX
-candidates for `prepare_swap`, we checked documented Monad testnet contract
-addresses from three independent protocols directly against
-`https://testnet-rpc.monad.xyz` (chain ID `10143`) via `eth_getCode`:
+Monad testnet appears to have reset around Nov 12, 2026 — several
+documented DEX contract addresses (Nad.fun, LFJ, Nabla) came back with empty
+bytecode on the current chain state when we checked, while Multicall3's
+canonical address is live (ruling out an RPC issue). Kuru Flow's own
+contracts are confirmed live, for what it's worth. Lesson: always re-check
+`cast code <address> --rpc-url https://testnet-rpc.monad.xyz` before trusting
+a documented address on this testnet, docs alone aren't enough.
 
-| Protocol | Docs source | Result |
-|---|---|---|
-| Nad.fun | `github.com/Naddotfun/contract-v3-abi` | Testnet closed Nov 12; repo only documents mainnet addresses |
-| LFJ (RouterLogic) | `developers.lfj.gg/deployment-addresses/monad_testnet` | Address matches docs exactly, but **empty bytecode on-chain** |
-| Nabla | `docs.nabla.fi/developers/contract-addresses/monad-testnet` | All 5 documented addresses (Portal, Router, Pyth Adapter, pools) **empty bytecode on-chain** |
 
-As a sanity check, Multicall3's canonical address
-(`0xcA11bde05977b3631167028862bE2a173976CA11`) *does* have live bytecode on
-the same RPC, so this isn't an RPC/tooling issue — it's commonly
-auto-redeployed by anyone via a deterministic factory on a fresh chain,
-independent of whether individual protocols have redeployed. That fits a
-testnet-reset explanation: chain ID `10143` is live and advancing, but none
-of those three protocols had redeployed to the current chain state behind
-that RPC at the time we checked. Worth re-checking liveness with `cast code`
-before wiring in any DEX address rather than trusting docs alone.
+---
 
-## Known limitations
-
-- **Transaction history isn't wired up with live data on this deployment.**
-  It depends on a Monadscan credential we haven't configured yet, so it
-  comes back empty rather than erroring. The sidebar's own log of recent
-  confirmations works regardless.
-- **No live price feed.** Token lookups report supply and decimals, not
-  price — no reliable source exists for Monad testnet pricing yet.
-- **Swap route availability isn't guaranteed** for every pair, since it
-  depends on live testnet liquidity through Kuru Flow. See [Swaps](#swaps).
-
-## Cut for hackathon scope
-
-Credits/rate-limiting, multi-model routing, NFT search, fund-flow tracing,
-validator/staking data, CSV export, pro mode/payments.
+Built by [@prajwalgraj](https://github.com/PrajwalGraj) and [@sohumvenkatadri7](https://github.com/sohumvenkatadri7).

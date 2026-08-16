@@ -14,7 +14,7 @@ import type { ToolCard } from "@/lib/tools/types";
 import { useContacts } from "@/hooks/use-contacts";
 import { Wallet, Send, Rocket, ArrowUpRight, Sparkles, Bot } from "lucide-react";
 
-const SUGGESTIONS = ["What's in my wallet?", "Send 0.1 MON to vitalik.eth", "Launch a token called Nomad"];
+const SUGGESTIONS = ["What's in my wallet?", "Send 0.1 MON to vitalik.nad", "Launch a token called Nomad"];
 
 function BackgroundGlow() {
   return (
@@ -112,7 +112,14 @@ export function Chat() {
         </div>
         
         <div className="w-full max-w-2xl animate-fade-in-up" style={{ animationDelay: "100ms", animationFillMode: "both" }}>
-          <MessageInput value={inputText} onChange={setInputText} onSend={handleSend} disabled={isLoading || !isConnected} className="w-full" />
+          <MessageInput
+            value={inputText}
+            onChange={setInputText}
+            onSend={handleSend}
+            disabled={isLoading || !isConnected}
+            walletConnected={isConnected}
+            className="w-full"
+          />
         </div>
 
         <div className="flex flex-wrap items-center justify-center gap-2 mt-4">
@@ -161,7 +168,13 @@ export function Chat() {
       </ScrollArea>
       <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-background via-background/90 to-transparent pt-12">
         <div className="mx-auto w-full max-w-2xl">
-          <MessageInput value={inputText} onChange={setInputText} onSend={handleSend} disabled={isLoading || !isConnected} />
+          <MessageInput
+            value={inputText}
+            onChange={setInputText}
+            onSend={handleSend}
+            disabled={isLoading || !isConnected}
+            walletConnected={isConnected}
+          />
         </div>
       </div>
     </div>

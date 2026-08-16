@@ -22,8 +22,19 @@ function paletteFor(symbol: string) {
 
 // Sized entirely by the caller's className (e.g. a flex-basis percentage) so it can
 // scale as a fraction of its container instead of a fixed pixel size.
-export function TokenIcon({ symbol, className }: { symbol: string; className?: string }) {
+export function TokenIcon({
+  symbol,
+  className,
+  hideOnError = false,
+}: {
+  symbol: string;
+  className?: string;
+  /** Render nothing (instead of the initials fallback) when no matching icon file exists. */
+  hideOnError?: boolean;
+}) {
   const [imageFailed, setImageFailed] = useState(false);
+
+  if (imageFailed && hideOnError) return null;
 
   return (
     <div className={cn("relative aspect-square shrink-0 overflow-hidden rounded-full ring-1 ring-border", className)}>

@@ -1,5 +1,5 @@
 "use client";
-import { Plus, MessageSquare, Settings, Box, Users, Trash2, ChevronDown } from "lucide-react";
+import { Plus, MessageSquare, Rocket, Box, Users, Trash2, ChevronDown } from "lucide-react";
 import { useContacts } from "@/hooks/use-contacts";
 import { useState, useEffect } from "react";
 import { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -210,10 +210,15 @@ export function Sidebar({ isOpen = true }: { isOpen?: boolean }) {
         </div>
 
         <div className="p-3 border-t border-border/40">
-          <button className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-muted-foreground hover:bg-muted/80 hover:text-foreground transition-all">
-            <Settings className="h-4 w-4" />
-            Settings
-          </button>
+          <a
+            href="https://forms.gle/hDiwCDSvoE1WuRxB8"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex w-full items-center gap-3 rounded-lg bg-brand/10 px-3 py-2.5 text-sm font-medium text-brand transition-all hover:bg-brand/15"
+          >
+            <Rocket className="h-4 w-4" />
+            Join waitlist
+          </a>
         </div>
       </div>
     </aside>

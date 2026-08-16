@@ -12,19 +12,30 @@ export function MessageInput({
   onChange,
   onSend,
   disabled,
+  walletConnected = true,
   className,
 }: {
   value: string;
   onChange: (val: string) => void;
   onSend: (text: string) => void;
   disabled?: boolean;
+  /** When false, submitting shows a small "connect your wallet" warning instead of sending. */
+  walletConnected?: boolean;
   className?: string;
 }) {
   const { contacts } = useContacts();
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [dropdownLeft, setDropdownLeft] = useState(16);
+  const [showWalletWarning, setShowWalletWarning] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const warningTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (warningTimeoutRef.current) clearTimeout(warningTimeoutRef.current);
+    };
+  }, []);
 
   const filteredContacts = mentionQuery !== null 
     ? contacts.filter(c => c.name.toLowerCase().includes(mentionQuery.toLowerCase()))
@@ -67,7 +78,14 @@ export function MessageInput({
 
   function submit() {
     const trimmed = value.trim();
-    if (!trimmed || disabled) return;
+    if (!trimmed) return;
+    if (!walletConnected) {
+      setShowWalletWarning(true);
+      if (warningTimeoutRef.current) clearTimeout(warningTimeoutRef.current);
+      warningTimeoutRef.current = setTimeout(() => setShowWalletWarning(false), 2200);
+      return;
+    }
+    if (disabled) return;
     onSend(trimmed);
   }
 
@@ -145,6 +163,14 @@ export function MessageInput({
 
   return (
     <div className={cn("search-glow-border group relative", className)}>
+      {showWalletWarning && (
+        <div
+          role="status"
+          className="absolute bottom-[calc(100%+10px)] left-1/2 z-50 -translate-x-1/2 whitespace-nowrap rounded-full border border-border bg-background px-3 py-1.5 text-xs text-muted-foreground shadow-sm animate-fade-in-up"
+        >
+          Connect your wallet before we start
+        </div>
+      )}
       {mentionQuery !== null && filteredContacts.length > 0 && (
         <div 
           className="absolute bottom-[calc(100%+12px)] min-w-[140px] bg-background/95 backdrop-blur-md border border-border/80 rounded-[10px] shadow-lg overflow-hidden animate-in fade-in slide-in-from-bottom-2 z-50 py-0.5"
