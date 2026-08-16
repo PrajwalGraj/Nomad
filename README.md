@@ -25,15 +25,30 @@ cp .env.local.example .env.local   # fill in ANTHROPIC_API_KEY at minimum
 npm run dev
 ```
 
-To deploy the token factory:
+To deploy the token factory, run the test suite first either way:
 
 ```bash
 cd contracts
 forge test                          # 3/3 should pass
+```
+
+Then deploy with either Foundry or Remix:
+
+```bash
+# Foundry CLI
 forge script script/DeployFactory.s.sol:DeployFactory \
   --rpc-url monad_testnet --private-key $DEPLOYER_PRIVATE_KEY --broadcast
-# then set NOMAD_FACTORY_ADDRESS in ../.env.local to the deployed address
 ```
+
+Or via [Remix](https://remix.ethereum.org): paste `NomadToken.sol` and
+`NomadTokenFactory.sol` into a new workspace (swap `NomadToken.sol`'s import to
+`@openzeppelin/contracts/token/ERC20/ERC20.sol` — Remix resolves npm packages
+directly, no Foundry remapping needed), compile with Solidity ≥0.8.24, switch
+the Deploy panel's environment to "Injected Provider" with MetaMask on Monad
+Testnet, and deploy `NomadTokenFactory` (not `NomadToken` — that one only ever
+gets created by the factory's `launchToken` call).
+
+Either way, set `NOMAD_FACTORY_ADDRESS` in `.env.local` to the deployed address.
 
 ## Known issues / not wired up
 
