@@ -7,16 +7,18 @@ function shortHash(hash: string) {
 
 export function TxHashLink({
   hash,
+  type = "tx",
   status = "neutral",
   className,
 }: {
   hash: string;
+  type?: "tx" | "address";
   status?: "success" | "failed" | "neutral";
   className?: string;
 }) {
   return (
     <a
-      href={`https://testnet.monadexplorer.com/tx/${hash}`}
+      href={`https://testnet.monadexplorer.com/${type}/${hash}`}
       target="_blank"
       rel="noreferrer"
       className={cn(

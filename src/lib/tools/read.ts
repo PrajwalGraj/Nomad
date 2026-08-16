@@ -1,4 +1,4 @@
-import { decodeFunctionData, formatEther, formatUnits, getAddress, toFunctionSelector, type Address } from "viem";
+import { decodeEventLog, decodeFunctionData, formatEther, formatUnits, getAddress, toFunctionSelector, type Address } from "viem";
 import { publicClient } from "@/lib/viem";
 import { erc20Abi } from "@/lib/contracts/erc20";
 import { nomadTokenFactoryAbi, FACTORY_ADDRESS } from "@/lib/contracts/factory";
@@ -187,7 +187,7 @@ function summarizeActivity(
   } else if (methodId === LAUNCH_TOKEN_SELECTOR && FACTORY_ADDRESS && to.toLowerCase() === FACTORY_ADDRESS.toLowerCase()) {
     try {
       const { args } = decodeFunctionData({ abi: nomadTokenFactoryAbi, data: tx.input as `0x${string}` });
-      summary = `Launched token "${args[1]}"`;
+      summary = `Launched token "${args[0]}"`;
     } catch {
       summary = "Launched a token";
     }
@@ -222,26 +222,92 @@ function summarizeActivity(
   };
 }
 
+function short(addr: string) {
+  return `${addr.slice(0, 6)}…${addr.slice(-4)}`;
+}
+
+type RawTransfer = { tokenAddress: Address; from: Address; to: Address; value: bigint };
+
+function parseTransferLog(log: { address: Address; topics: readonly `0x${string}`[]; data: `0x${string}` }): RawTransfer | null {
+  const TRANSFER_TOPIC = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
+  // ERC-20's Transfer(address,address,uint256) and ERC-721's Transfer(address,address,uint256)
+  // share this exact topic0 hash — only the ERC-20 one has `value` non-indexed (in data,
+  // topics.length === 3). ERC-721 indexes tokenId too (topics.length === 4, data empty).
+  // Without this check an NFT transfer gets silently mis-decoded as a token value of ~0.
+  if (log.topics[0] !== TRANSFER_TOPIC || log.topics.length !== 3 || log.data === "0x") return null;
+  return {
+    tokenAddress: log.address,
+    from: getAddress(`0x${log.topics[1].slice(26)}`),
+    to: getAddress(`0x${log.topics[2].slice(26)}`),
+    value: BigInt(log.data),
+  };
+}
+
 export async function explainTransaction(txHash: `0x${string}`): Promise<ExplainTransactionCard> {
   const [tx, receipt] = await Promise.all([
     publicClient.getTransaction({ hash: txHash }),
     publicClient.getTransactionReceipt({ hash: txHash }),
   ]);
 
-  const decodedEvents: DecodedEvent[] = [];
-  for (const log of receipt.logs) {
-    try {
-      const decoded = parseTransferLog(log);
-      if (decoded) decodedEvents.push(decoded);
-    } catch {
-      // Not a recognized event — skip. We only decode against known ABIs (ERC-20 Transfer for now).
+  const transfers = receipt.logs.map(parseTransferLog).filter((t): t is RawTransfer => t !== null);
+
+  const uniqueTokens = [...new Set(transfers.map((t) => t.tokenAddress))];
+  const tokenMetaResults = uniqueTokens.length
+    ? await publicClient.multicall({
+        contracts: uniqueTokens.flatMap((addr) => [
+          { address: addr, abi: erc20Abi, functionName: "symbol" } as const,
+          { address: addr, abi: erc20Abi, functionName: "decimals" } as const,
+        ]),
+        allowFailure: true,
+      })
+    : [];
+  const tokenMeta = new Map<string, { symbol: string; decimals: number }>();
+  uniqueTokens.forEach((addr, i) => {
+    const symbolResult = tokenMetaResults[i * 2];
+    const decimalsResult = tokenMetaResults[i * 2 + 1];
+    tokenMeta.set(addr.toLowerCase(), {
+      symbol: symbolResult?.status === "success" ? (symbolResult.result as string) : "tokens",
+      decimals: decimalsResult?.status === "success" ? (decimalsResult.result as number) : 18,
+    });
+  });
+
+  const decodedEvents: DecodedEvent[] = transfers.map((t) => {
+    const meta = tokenMeta.get(t.tokenAddress.toLowerCase()) ?? { symbol: "tokens", decimals: 18 };
+    return {
+      name: "Transfer",
+      summary: `${formatUnits(t.value, meta.decimals)} ${meta.symbol}: ${short(t.from)} → ${short(t.to)}`,
+    };
+  });
+
+  const status: ExplainTransactionCard["status"] = receipt.status === "success" ? "success" : "reverted";
+  const details =
+    status === "reverted"
+      ? { summary: "Transaction reverted", icon: undefined, detailType: "reverted" as const }
+      : await summarizeTransaction(tx, transfers, tokenMeta);
+
+  let launchedTokenAddress: `0x${string}` | undefined;
+  if (details.detailType === "launch") {
+    for (const log of receipt.logs) {
+      try {
+        const decoded = decodeEventLog({ abi: nomadTokenFactoryAbi, data: log.data, topics: log.topics });
+        if (decoded.eventName === "TokenLaunched") {
+          launchedTokenAddress = decoded.args.token;
+          break;
+        }
+      } catch {
+        // Not a TokenLaunched log — skip.
+      }
     }
   }
 
   return {
     kind: "explain_transaction",
     hash: txHash,
-    status: receipt.status === "success" ? "success" : "reverted",
+    status,
+    summary: details.summary,
+    icon: details.icon,
+    detailType: details.detailType,
+    launchedTokenAddress,
     from: tx.from,
     to: tx.to,
     valueFormatted: formatEther(tx.value),
@@ -250,18 +316,90 @@ export async function explainTransaction(txHash: `0x${string}`): Promise<Explain
   };
 }
 
-function parseTransferLog(log: { address: Address; topics: readonly `0x${string}`[]; data: `0x${string}` }): DecodedEvent | null {
-  const TRANSFER_TOPIC = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
-  // ERC-20's Transfer(address,address,uint256) and ERC-721's Transfer(address,address,uint256)
-  // share this exact topic0 hash — only the ERC-20 one has `value` non-indexed (in data,
-  // topics.length === 3). ERC-721 indexes tokenId too (topics.length === 4, data empty).
-  // Without this check an NFT transfer gets silently mis-decoded as a token value of ~0.
-  if (log.topics[0] !== TRANSFER_TOPIC || log.topics.length !== 3 || log.data === "0x") return null;
-  const from = `0x${log.topics[1].slice(26)}`;
-  const to = `0x${log.topics[2].slice(26)}`;
-  const value = BigInt(log.data);
-  return {
-    name: "Transfer",
-    summary: `Transfer of raw amount ${value.toString()} on token ${log.address} from ${from} to ${to}`,
-  };
+type TransactionDetails = {
+  summary: string;
+  icon?: ExplainTransactionCard["icon"];
+  detailType: ExplainTransactionCard["detailType"];
+};
+
+async function summarizeTransaction(
+  tx: { from: Address; to: Address | null; input: `0x${string}`; value: bigint },
+  transfers: RawTransfer[],
+  tokenMeta: Map<string, { symbol: string; decimals: number }>
+): Promise<TransactionDetails> {
+  const fromLower = tx.from.toLowerCase();
+  const outgoing = transfers.filter((t) => t.from.toLowerCase() === fromLower);
+  const incoming = transfers.filter((t) => t.to.toLowerCase() === fromLower);
+  const methodId = tx.input.slice(0, 10);
+
+  if (transfers.length === 0 && tx.input === "0x" && tx.to) {
+    return {
+      summary: `Sent ${formatEther(tx.value)} MON to ${short(tx.to)}`,
+      icon: { kind: "single", symbol: "MON" },
+      detailType: "native_transfer",
+    };
+  }
+  if (!tx.to) {
+    return { summary: "Deployed a contract", detailType: "deploy" };
+  }
+  if (outgoing.length === 1 && incoming.length === 1 && outgoing[0].tokenAddress.toLowerCase() !== incoming[0].tokenAddress.toLowerCase()) {
+    const sold = tokenMeta.get(outgoing[0].tokenAddress.toLowerCase())!;
+    const bought = tokenMeta.get(incoming[0].tokenAddress.toLowerCase())!;
+    return {
+      summary: `Swapped ${formatUnits(outgoing[0].value, sold.decimals)} ${sold.symbol} for ${formatUnits(incoming[0].value, bought.decimals)} ${bought.symbol}`,
+      icon: { kind: "swap", tokenInSymbol: sold.symbol, tokenOutSymbol: bought.symbol },
+      detailType: "swap",
+    };
+  }
+  // Native MON legs of a swap never emit a Transfer log, so a MON-in/token-out swap only
+  // shows up as one incoming ERC-20 transfer alongside the tx's own native value — the
+  // reverse (token-in/MON-out) is invisible to log scanning and falls through below.
+  if (tx.value > 0n && outgoing.length === 0 && incoming.length === 1) {
+    const bought = tokenMeta.get(incoming[0].tokenAddress.toLowerCase())!;
+    return {
+      summary: `Swapped ${formatEther(tx.value)} MON for ${formatUnits(incoming[0].value, bought.decimals)} ${bought.symbol}`,
+      icon: { kind: "swap", tokenInSymbol: "MON", tokenOutSymbol: bought.symbol },
+      detailType: "swap",
+    };
+  }
+  if (methodId === LAUNCH_TOKEN_SELECTOR && FACTORY_ADDRESS && tx.to.toLowerCase() === FACTORY_ADDRESS.toLowerCase()) {
+    try {
+      const { args } = decodeFunctionData({ abi: nomadTokenFactoryAbi, data: tx.input });
+      return {
+        summary: `Launched token "${args[0]}"`,
+        icon: { kind: "single", symbol: args[1] as string },
+        detailType: "launch",
+      };
+    } catch {
+      return { summary: "Launched a token", detailType: "launch" };
+    }
+  }
+  if (outgoing.length === 1) {
+    const meta = tokenMeta.get(outgoing[0].tokenAddress.toLowerCase())!;
+    return {
+      summary: `Sent ${formatUnits(outgoing[0].value, meta.decimals)} ${meta.symbol} to ${short(outgoing[0].to)}`,
+      icon: { kind: "single", symbol: meta.symbol },
+      detailType: "token_transfer",
+    };
+  }
+  if (incoming.length === 1) {
+    const meta = tokenMeta.get(incoming[0].tokenAddress.toLowerCase())!;
+    return {
+      summary: `Received ${formatUnits(incoming[0].value, meta.decimals)} ${meta.symbol} from ${short(incoming[0].from)}`,
+      icon: { kind: "single", symbol: meta.symbol },
+      detailType: "token_transfer",
+    };
+  }
+  if (methodId === APPROVE_SELECTOR) {
+    try {
+      const symbol = await publicClient.readContract({ address: tx.to, abi: erc20Abi, functionName: "symbol" });
+      return { summary: `Approved ${symbol} for spending`, icon: { kind: "single", symbol }, detailType: "approve" };
+    } catch {
+      return { summary: "Approved a token for spending", detailType: "approve" };
+    }
+  }
+  if (transfers.length > 2) {
+    return { summary: `Contract interaction (${transfers.length} token transfers)`, detailType: "contract" };
+  }
+  return { summary: "Contract interaction", detailType: "contract" };
 }

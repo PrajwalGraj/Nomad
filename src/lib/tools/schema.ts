@@ -82,7 +82,7 @@ const readTools: Tool[] = [
       type: "object",
       properties: {
         address: { type: "string", description: "Wallet address to look up. Defaults to the currently connected wallet." },
-        limit: { type: "number", description: "Max number of transfers to return. Defaults to 10." },
+        limit: { type: "number", description: "Max number of transfers to return. Defaults to 4." },
       },
       required: [],
     },

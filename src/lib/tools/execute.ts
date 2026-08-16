@@ -60,7 +60,7 @@ export async function executeTool(
       }
       case "get_transaction_history": {
         const address = normalizeAddress((input.address as string | undefined) ?? ctx.walletAddress);
-        const limit = (input.limit as number | undefined) ?? 10;
+        const limit = (input.limit as number | undefined) ?? 4;
         const card = await getTransactionHistory(address, limit);
         return { card, resultForModel: card, isError: false };
       }

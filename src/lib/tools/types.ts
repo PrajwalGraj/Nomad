@@ -10,7 +10,9 @@ export type PrepareSendCard = {
   amountFormatted: string;
   token: { symbol: string; address: `0x${string}` | "native"; decimals: number };
   tx: TxParams;
-  estimatedGas: string;
+  // Formatted as "<amount> MON" — gas limit * gas price, since Monad charges on the
+  // limit, not what's actually used. See lib/tools/actions.ts formatGasCostMon.
+  estimatedGasFormatted: string;
   insufficientBalance: boolean;
 };
 
@@ -35,7 +37,7 @@ export type PrepareLaunchCard = {
   kind: "prepare_token_launch";
   configured: boolean;
   reason?: string;
-  estimatedGas?: string;
+  estimatedGasFormatted?: string;
   name: string;
   symbol: string;
   totalSupplyFormatted: string;
@@ -81,10 +83,20 @@ export type DecodedEvent = {
   summary: string;
 };
 
+export type TokenIconSpec =
+  | { kind: "single"; symbol: string }
+  | { kind: "swap"; tokenInSymbol: string; tokenOutSymbol: string };
+
 export type ExplainTransactionCard = {
   kind: "explain_transaction";
   hash: `0x${string}`;
   status: "success" | "reverted";
+  summary: string; // plain-English headline, e.g. "Swapped 0.5 MON for 12.3 USDC"
+  icon?: TokenIconSpec;
+  // "launch" swaps the From/To rows for the newly deployed token's address in the UI —
+  // From (the deployer)/To (the factory) aren't the interesting addresses for a launch.
+  detailType: "native_transfer" | "token_transfer" | "swap" | "launch" | "approve" | "deploy" | "contract" | "reverted";
+  launchedTokenAddress?: `0x${string}`;
   from: `0x${string}`;
   to: `0x${string}` | null;
   valueFormatted: string;

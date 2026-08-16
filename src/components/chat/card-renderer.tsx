@@ -6,6 +6,7 @@ import { ExplainTransactionCard } from "./cards/explain-transaction-card";
 import { ConfirmationCard } from "./cards/confirmation-card";
 import { SwapTokenPair } from "./cards/swap-token-pair";
 import { TokenIcon } from "./cards/token-icon";
+import { TokenLaunchCoin } from "./cards/token-launch-coin";
 
 export function CardRenderer({ card }: { card: ToolCard }) {
   switch (card.kind) {
@@ -27,7 +28,7 @@ export function CardRenderer({ card }: { card: ToolCard }) {
             { label: "To", value: card.to },
           ]}
           tx={card.tx}
-          estimatedGas={card.estimatedGas}
+          estimatedGas={card.estimatedGasFormatted}
           disabledReason={card.insufficientBalance ? "Insufficient balance for this amount." : undefined}
         />
       );
@@ -71,13 +72,18 @@ export function CardRenderer({ card }: { card: ToolCard }) {
       return (
         <ConfirmationCard
           actionLabel="Launch token"
+          hero={<TokenLaunchCoin name={card.name} symbol={card.symbol} />}
           rows={[
-            { label: "Name", value: card.name },
-            { label: "Symbol", value: card.symbol },
-            { label: "Total supply", value: card.totalSupplyFormatted },
+            {
+              label: "Total supply",
+              value: `${Number(card.totalSupplyFormatted).toLocaleString()} ${card.symbol}`,
+            },
+            { label: "Decimals", value: "18" },
+            { label: "Standard", value: "ERC-20, fixed supply" },
+            { label: "Recipient", value: "100% minted to you" },
           ]}
           tx={card.tx}
-          estimatedGas={card.configured ? card.estimatedGas : undefined}
+          estimatedGas={card.configured ? card.estimatedGasFormatted : undefined}
           disabledReason={!card.configured ? card.reason : undefined}
         />
       );

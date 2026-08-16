@@ -14,6 +14,7 @@ export function ConfirmationCard({
   actionLabel,
   titleContent,
   cornerIcon,
+  hero,
   rows,
   tx,
   estimatedGas,
@@ -24,6 +25,8 @@ export function ConfirmationCard({
   titleContent?: React.ReactNode;
   /** Optional token/brand icon pinned to the top-right of the header. */
   cornerIcon?: React.ReactNode;
+  /** Optional showcase block (e.g. a coin badge) shown above the rows in CardContent. */
+  hero?: React.ReactNode;
   rows: Row[];
   tx: TxParams | undefined;
   estimatedGas?: string;
@@ -49,6 +52,7 @@ export function ConfirmationCard({
         </div>
       </CardHeader>
       <CardContent className="space-y-2">
+        {hero}
         {rows.map((r) => (
           <div key={r.label} className="flex items-baseline justify-between text-sm">
             <span className="text-muted-foreground">{r.label}</span>

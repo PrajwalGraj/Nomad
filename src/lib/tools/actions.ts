@@ -1,10 +1,21 @@
-import { encodeFunctionData, formatUnits, getAddress, isAddress, parseEther, parseUnits, toHex, type Address } from "viem";
+import { encodeFunctionData, formatEther, formatUnits, getAddress, isAddress, parseEther, parseUnits, toHex, type Address } from "viem";
 import { publicClient } from "@/lib/viem";
 import { erc20Abi } from "@/lib/contracts/erc20";
 import { FACTORY_ADDRESS, nomadTokenFactoryAbi } from "@/lib/contracts/factory";
 import { getKuruQuote, NATIVE_MON_SENTINEL } from "@/lib/kuru";
 import { KNOWN_TOKENS } from "@/lib/tokens";
 import type { PrepareLaunchCard, PrepareSendCard, PrepareSwapCard } from "./types";
+
+// Monad charges gas_limit * price_per_gas — the limit, not what's actually consumed
+// (block leaders build blocks before execution, so usage isn't known at inclusion
+// time). So the cost shown to users has to be the limit times the live gas price,
+// never the raw gas-unit number on its own.
+const FALLBACK_GAS_PRICE_WEI = 100_000_000_000n; // Monad's stated minimum base fee: 100 gwei
+
+async function estimateGasCostMon(gasLimit: bigint) {
+  const gasPrice = await publicClient.getGasPrice().catch(() => FALLBACK_GAS_PRICE_WEI);
+  return `${formatEther(gasLimit * gasPrice)} MON`;
+}
 
 function resolveKnownToken(symbol: string) {
   const token = KNOWN_TOKENS.find((t) => t.symbol.toLowerCase() === symbol.toLowerCase());
@@ -45,7 +56,7 @@ export async function prepareSend(
       amountFormatted: amount,
       token: { symbol: "MON", address: "native", decimals: 18 },
       tx: { to, value: toHex(amountWei), data: "0x" },
-      estimatedGas: estimatedGas.toString(),
+      estimatedGasFormatted: await estimateGasCostMon(estimatedGas),
       insufficientBalance: balance < amountWei,
     };
   }
@@ -74,7 +85,7 @@ export async function prepareSend(
     amountFormatted: amount,
     token: { symbol: token.symbol, address: token.address, decimals },
     tx: { to: token.address, value: "0x0", data },
-    estimatedGas: estimatedGas.toString(),
+    estimatedGasFormatted: await estimateGasCostMon(estimatedGas),
     insufficientBalance: balance < amountUnits,
   };
 }
@@ -213,6 +224,6 @@ export async function prepareTokenLaunch(
     ...baseCard,
     configured: true,
     tx: { to: FACTORY_ADDRESS, value: "0x0", data },
-    estimatedGas: estimatedGas.toString(),
+    estimatedGasFormatted: await estimateGasCostMon(estimatedGas),
   };
 }

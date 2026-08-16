@@ -49,7 +49,11 @@ export async function POST(req: Request) {
   }
 
   if (!process.env.ANTHROPIC_API_KEY) {
-    return NextResponse.json({ error: "ANTHROPIC_API_KEY is not configured on the server." }, { status: 500 });
+    // No LLM configured — reply in-character instead of surfacing a raw config error.
+    // Requests the regex fast-path above already understands (balances, sends, swaps,
+    // launches) still work fine without this; only free-form questions land here.
+    // Returned as an error so the client renders it in the destructive (red) alert style.
+    return NextResponse.json({ error: "Nomad's having lunch, come back later." }, { status: 503 });
   }
 
   const history: MessageParam[] = [...messages];
