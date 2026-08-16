@@ -38,7 +38,9 @@ which is optional and only needed for that overflow case.
 - **Explain a transaction** — decodes a receipt's logs and summarizes it in
   plain English instead of dumping raw hex at you.
 - **Recent activity** — pulls your last few transactions with a one-line
-  summary of each, via Monad's Etherscan-compatible explorer API.
+  summary of each, via Monad's Etherscan-compatible explorer API. The
+  sidebar also keeps its own local log of anything you've just confirmed in
+  the current session.
 - **Contacts** — save a name to an address in the sidebar, then type `@name`
   in the chat box to autocomplete it anywhere you'd use an address. Stored in
   the browser, not the wallet.
@@ -64,27 +66,11 @@ connected wallet.
 git clone https://github.com/PrajwalGraj/Nomad.git
 cd nomad
 npm install
-cp .env.local.example .env.local
 npm run dev
 ```
 
-That's enough to get balance checks, sends, swaps, launches, token lookups,
-and transaction history working — `NOMAD_FACTORY_ADDRESS` already defaults to
-the deployed testnet factory above, so you don't need to deploy your own to
-try it.
-
-### Environment variables
-
-| Variable | Required? | What it's for |
-|---|---|---|
-| `ETHERSCAN_API_KEY` | Yes, for transaction history | Free key at [etherscan.io/apis](https://etherscan.io/apis) — one key works across chains via `chainid=10143` for Monad testnet |
-| `ANTHROPIC_API_KEY` | No | Only used when a message doesn't match a recognized command pattern |
-| `NOMAD_MODEL` | No | Defaults to `claude-sonnet-5` |
-| `NOMAD_FACTORY_ADDRESS` | No | Defaults to the deployed factory above; set this if you deploy your own |
-| `NOMAD_KNOWN_TOKENS` | No | Comma-separated `SYMBOL:0xaddress` pairs shown in balance/send/swap — we use `USDC:0x3bA3d39AFcf8bb994f7964B3e0171Ea2Ba361570,WETH:0x45477f4709771331db81944A5E20eF95Bc7BA2D7,WMON:0xFb8bf4c1CC7a94c73D209a149eA2AbEa852BC541` |
-| `KURU_FLOW_API_BASE` | No | Defaults to `https://ws.kuru.io` |
-| `KURU_REFERRER_ADDRESS`, `KURU_REFERRER_FEE_BPS` | No | Collect a referral fee on swaps you route |
-| `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` | No | Only needed for WalletConnect-based wallets in RainbowKit |
+That's it. Balance checks, sends, swaps, and launches all work straight
+away — the app runs with nothing else to configure.
 
 ## Smart contracts
 
@@ -110,14 +96,15 @@ packages directly, no Foundry remapping needed), compile with Solidity
 ≥0.8.24, switch the Deploy panel's environment to "Injected Provider" with
 MetaMask on Monad Testnet, and deploy `NomadTokenFactory` (not `NomadToken` —
 that one only ever gets created by the factory's `launchToken` call). Then
-set `NOMAD_FACTORY_ADDRESS` in `.env.local` to your deployed address.
+point `FACTORY_ADDRESS` in `src/lib/contracts/factory.ts` at your deployed
+address.
 
 ## Swaps
 
 `prepare_swap` routes through [Kuru Flow](https://docs.monad.xyz/guides/kuru-flow)
 (`src/lib/kuru.ts`), Monad's own documented swap aggregator — no on-chain
 quote call or router ABI to maintain, it returns ready-to-sign calldata from
-a REST API. No env var is required to turn it on.
+a REST API.
 
 We verified this independently before wiring it in (see the testnet-reset
 note below — don't take vendor docs at face value on a testnet):
@@ -164,9 +151,10 @@ before wiring in any DEX address rather than trusting docs alone.
 
 ## Known limitations
 
-- **Transaction history and the sidebar's activity feed both depend on a
-  working `ETHERSCAN_API_KEY`.** Without one (or with an invalid one), both
-  fail — everything else works independently of it.
+- **Transaction history isn't wired up with live data on this deployment.**
+  It depends on a Monadscan credential we haven't configured yet, so it
+  comes back empty rather than erroring. The sidebar's own log of recent
+  confirmations works regardless.
 - **No live price feed.** Token lookups report supply and decimals, not
   price — no reliable source exists for Monad testnet pricing yet.
 - **Swap route availability isn't guaranteed** for every pair, since it
