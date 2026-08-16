@@ -11,9 +11,8 @@ import { CardRenderer } from "./card-renderer";
 import { ThinkingIndicator } from "./thinking-indicator";
 import type { DisplayItem } from "./types";
 import type { ToolCard } from "@/lib/tools/types";
-
-let idCounter = 0;
-const nextId = () => `item-${++idCounter}`;
+import { useContacts } from "@/hooks/use-contacts";
+import { Wallet, Send, Rocket, ArrowUpRight, Sparkles, Bot } from "lucide-react";
 
 const SUGGESTIONS = ["What's in my wallet?", "Send 0.1 MON to vitalik.eth", "Launch a token called Nomad"];
 
@@ -22,14 +21,17 @@ function BackgroundGlow() {
     <div aria-hidden className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
       <div className="animate-blob absolute -top-32 -right-24 size-96 rounded-full bg-brand/20 blur-3xl" />
       <div className="animate-blob-delayed absolute -bottom-40 -left-24 size-96 rounded-full bg-primary/15 blur-3xl" />
+      <div className="animate-blob absolute top-[30%] -left-32 size-72 rounded-full bg-chart-1/10 blur-3xl" style={{ animationDelay: '-15s', animationDuration: '30s' }} />
     </div>
   );
 }
 
 export function Chat() {
   const { address, isConnected } = useAccount();
+  const { contacts } = useContacts();
   const [history, setHistory] = useState<MessageParam[]>([]);
   const [items, setItems] = useState<DisplayItem[]>([]);
+  const [inputText, setInputText] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -37,33 +39,58 @@ export function Chat() {
     bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [items, isLoading]);
 
+  useEffect(() => {
+    const handleNewChat = () => {
+      setHistory([]);
+      setItems([]);
+      setInputText("");
+    };
+    window.addEventListener("nomad-new-chat", handleNewChat);
+    return () => window.removeEventListener("nomad-new-chat", handleNewChat);
+  }, []);
+
   async function handleSend(text: string) {
+    setInputText("");
     const nextHistory: MessageParam[] = [...history, { role: "user", content: text }];
     setHistory(nextHistory);
-    setItems((prev) => [...prev, { id: nextId(), type: "message", role: "user", text }]);
+    
+    const userMessageId = crypto.randomUUID();
+    setItems((prev) => [...prev, { id: userMessageId, type: "message", role: "user", text }]);
     setIsLoading(true);
 
     try {
+      // Read directly from localStorage to ensure we have the absolute latest contacts
+      // even if the user just added one in the modal without refreshing.
+      let currentContacts = contacts;
+      try {
+        const saved = localStorage.getItem("nomad-contacts");
+        if (saved) currentContacts = JSON.parse(saved);
+      } catch (e) {}
+
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: nextHistory, walletAddress: address }),
+        body: JSON.stringify({ messages: nextHistory, walletAddress: address, contacts: currentContacts }),
       });
       const data = await res.json();
 
       if (!res.ok) {
-        setItems((prev) => [...prev, { id: nextId(), type: "error", text: data.error ?? "Something went wrong." }]);
+        const errorId = crypto.randomUUID();
+        setItems((prev) => [...prev, { id: errorId, type: "error", text: data.error ?? "Something went wrong." }]);
         return;
       }
 
       setHistory(data.messages);
-      setItems((prev) => [
-        ...prev,
-        ...(data.cards as ToolCard[]).map((card) => ({ id: nextId(), type: "card" as const, card })),
-        ...(data.text ? [{ id: nextId(), type: "message" as const, role: "assistant" as const, text: data.text }] : []),
-      ]);
+      
+      const newItems: DisplayItem[] = [
+        ...(data.cards as ToolCard[]).map((card) => ({ id: crypto.randomUUID(), type: "card" as const, card })),
+        ...(data.text ? [{ id: crypto.randomUUID(), type: "message" as const, role: "assistant" as const, text: data.text }] : []),
+      ];
+      
+      setItems((prev) => [...prev, ...newItems]);
     } catch {
-      setItems((prev) => [...prev, { id: nextId(), type: "error", text: "Network error — is the server running?" }]);
+      const errorId = crypto.randomUUID();
+      setItems((prev) => [...prev, { id: errorId, type: "error", text: "Network error — is the server running?" }]);
     } finally {
       setIsLoading(false);
     }
@@ -72,26 +99,31 @@ export function Chat() {
 
   if (items.length === 0) {
     return (
-      <div className="relative flex flex-1 flex-col items-center justify-start gap-7 overflow-hidden p-4 pt-[14vh] sm:pt-[18vh]">
+      <div className="relative flex flex-1 flex-col items-center justify-start gap-8 overflow-hidden p-4 pt-[10vh] sm:pt-[12vh]">
         <BackgroundGlow />
-        <div className="flex max-w-lg flex-col items-center gap-3 text-center">
-          <h1 className="text-gradient-brand font-heading text-5xl font-bold tracking-tight sm:text-6xl">
+        
+        <div className="flex max-w-lg flex-col items-center gap-4 text-center animate-fade-in-up">
+          <h1 className="text-gradient-brand font-heading text-5xl font-bold tracking-tight sm:text-6xl pb-1">
             Where should we go?
           </h1>
-          <p className="text-balance text-sm text-muted-foreground sm:text-base">
+          <p className="text-sm text-muted-foreground sm:text-base">
             {isConnected
-              ? "Ask Nomad to check a balance, send MON, or launch a token."
+              ? "Ask Monad to check balance, send MON or launch a token"
               : "Connect your wallet to get started."}
           </p>
         </div>
-        <MessageInput onSend={handleSend} disabled={isLoading || !isConnected} className="w-full max-w-xl" />
+        
+        <div className="w-full max-w-2xl animate-fade-in-up" style={{ animationDelay: "100ms", animationFillMode: "both" }}>
+          <MessageInput value={inputText} onChange={setInputText} onSend={handleSend} disabled={isLoading || !isConnected} className="w-full" />
+        </div>
+
         {isConnected && (
-          <div className="flex flex-wrap items-center justify-center gap-2">
+          <div className="flex flex-wrap items-center justify-center gap-2 mt-4">
             {SUGGESTIONS.map((s) => (
               <button
                 key={s}
                 type="button"
-                onClick={() => handleSend(s)}
+                onClick={() => setInputText(s)}
                 className="rounded-full border border-border bg-background px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:border-brand/50 hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
               >
                 {s}
@@ -107,7 +139,7 @@ export function Chat() {
     <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
       <BackgroundGlow />
       <ScrollArea className="min-h-0 flex-1">
-        <div className="mx-auto flex max-w-2xl flex-col gap-4 p-4">
+        <div className="mx-auto flex max-w-2xl flex-col gap-6 p-4 pt-8 pb-32">
           {items.map((item) => {
             if (item.type === "message")
               return (
@@ -131,8 +163,10 @@ export function Chat() {
           <div ref={bottomRef} />
         </div>
       </ScrollArea>
-      <div className="mx-auto w-full max-w-2xl p-4">
-        <MessageInput onSend={handleSend} disabled={isLoading || !isConnected} />
+      <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-background via-background/90 to-transparent pt-12">
+        <div className="mx-auto w-full max-w-2xl">
+          <MessageInput value={inputText} onChange={setInputText} onSend={handleSend} disabled={isLoading || !isConnected} />
+        </div>
       </div>
     </div>
   );

@@ -1,12 +1,12 @@
 "use client";
 
-import { useState } from "react";
 import { useSendTransaction, useWaitForTransactionReceipt } from "wagmi";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { TxHashLink } from "./tx-hash-link";
 import type { TxParams } from "@/lib/tools/types";
+import { useEffect } from "react";
 
 type Row = { label: string; value: string };
 
@@ -32,11 +32,36 @@ export function ConfirmationCard({
   estimatedGas?: string;
   disabledReason?: string;
 }) {
-  const [rejected, setRejected] = useState(false);
   const { sendTransaction, data: hash, isPending, error } = useSendTransaction();
   const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({ hash });
 
-  const canConfirm = !!tx && !disabledReason && !rejected && !hash;
+  const canConfirm = !!tx && !disabledReason && !hash;
+
+  // Cache confirmed transactions locally so they appear immediately in the sidebar
+  // even if the RPC doesn't index them (like native MON transfers).
+  useEffect(() => {
+    if (isConfirmed && hash) {
+      try {
+        const saved = localStorage.getItem("nomad-local-txs-v4");
+        const txs = saved ? JSON.parse(saved) : [];
+        if (!txs.find((t: any) => t.hash === hash)) {
+          let summary = actionLabel;
+          const amountRow = rows.find(r => r.label.toLowerCase() === "amount" || r.label.toLowerCase() === "amount in");
+          const toRow = rows.find(r => r.label.toLowerCase() === "to");
+          
+          if (actionLabel.startsWith("Transfer") || actionLabel.startsWith("Send")) {
+            summary = `Sent ${amountRow?.value || ""} to ${toRow?.value || "unknown"}`;
+          } else {
+            if (amountRow) summary += ` ${amountRow.value}`;
+          }
+          
+          txs.unshift({ hash, summary, timestamp: Date.now() });
+          localStorage.setItem("nomad-local-txs-v4", JSON.stringify(txs));
+          window.dispatchEvent(new Event("nomad-tx-added"));
+        }
+      } catch (e) {}
+    }
+  }, [isConfirmed, hash, actionLabel, rows]);
 
   return (
     <Card className="tool-card w-full max-w-md ring-0">
@@ -48,7 +73,6 @@ export function ConfirmationCard({
           {cornerIcon}
           {isConfirmed && <Badge>confirmed</Badge>}
           {hash && !isConfirmed && <Badge variant="secondary">{isConfirming ? "confirming…" : "submitted"}</Badge>}
-          {rejected && <Badge variant="destructive">rejected</Badge>}
         </div>
       </CardHeader>
       <CardContent className="space-y-2">
@@ -69,7 +93,7 @@ export function ConfirmationCard({
         {error && <p className="text-xs text-destructive">{error.message}</p>}
         {hash && <TxHashLink hash={hash} status={isConfirmed ? "success" : "neutral"} />}
       </CardContent>
-      {!hash && !rejected && (
+      {!hash && (
         <CardFooter className="gap-2">
           <Button
             className="flex-1"
@@ -78,7 +102,7 @@ export function ConfirmationCard({
           >
             {isPending ? "Confirm in wallet…" : "Confirm"}
           </Button>
-          <Button variant="outline" className="flex-1" onClick={() => setRejected(true)} disabled={isPending}>
+          <Button variant="outline" className="flex-1" disabled={isPending}>
             Reject
           </Button>
         </CardFooter>
