@@ -19,7 +19,14 @@ which is optional and only needed for that overflow case.
 | **Live app** | https://nomadchat.vercel.app/ |
 | **Repo** | https://github.com/PrajwalGraj/Nomad |
 | **NomadTokenFactory (Monad testnet)** | [`0x526F54924b8675f6D15e114C48F830a6a418e408`](https://testnet.monadexplorer.com/address/0x526F54924b8675f6D15e114C48F830a6a418e408) — verified, source published |
+| **NomadTokenFactory (Monad mainnet)** | [`0x526F54924b8675f6D15e114C48F830a6a418e408`](https://monadscan.com/address/0x526F54924b8675f6D15e114C48F830a6a418e408) |
 | **Chain** | Monad Testnet, chain ID `10143` |
+
+The mainnet factory is deployed and live on-chain (same bytecode, same
+address as testnet — a fresh deployer's first transaction lands at the same
+address on any EVM chain, independent of chain ID). It hasn't been verified
+on Monadscan yet, and the app itself is still wired to Monad testnet only —
+see [Stack](#stack).
 
 ## What it does
 
@@ -71,6 +78,8 @@ npm run dev
 
 That's it. Balance checks, sends, swaps, and launches all work straight
 away — the app runs with nothing else to configure.
+
+Open `http://localhost:3000`, connect a wallet on Monad testnet, and try it out.
 
 ## Smart contracts
 
